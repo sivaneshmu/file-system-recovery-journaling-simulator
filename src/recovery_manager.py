@@ -8,6 +8,9 @@ class RecoveryManager:
         print("\nSTARTING FILE SYSTEM RECOVERY")
         print("-" * 60)
 
+        # Clear the previous recovery log for a new recovery run.
+        self.recovery_log = []
+
         incomplete = self.journal.get_incomplete_transactions()
 
         if not incomplete:
@@ -15,12 +18,13 @@ class RecoveryManager:
             return self.recovery_log
 
         for transaction in incomplete:
-            print(
-                f"\nRecovering TX{transaction['transaction_id']:03d} "
-                f"({transaction['operation']})"
-            )
-
+            transaction_id = transaction["transaction_id"]
             operation = transaction["operation"]
+
+            print(
+                f"\nRecovering TX{transaction_id:03d} "
+                f"({operation})"
+            )
 
             if operation == "CREATE":
                 self._undo_create(transaction)
@@ -35,14 +39,14 @@ class RecoveryManager:
                 print(f"Unknown operation: {operation}")
 
                 self.recovery_log.append({
-                    "transaction_id": transaction["transaction_id"],
+                    "transaction_id": transaction_id,
                     "action": "FAILED",
                     "reason": "Unknown operation"
                 })
 
                 continue
 
-            self._mark_recovered(transaction["transaction_id"])
+            self._mark_recovered(transaction_id)
 
         return self.recovery_log
 
@@ -52,8 +56,10 @@ class RecoveryManager:
 
         print("Recovery action: UNDO CREATE")
 
+        released_blocks = []
+
         for block_id in blocks:
-            if block_id < self.disk.total_blocks:
+            if 0 <= block_id < self.disk.total_blocks:
                 block = self.disk.blocks[block_id]
 
                 if block["status"] in (
@@ -62,11 +68,12 @@ class RecoveryManager:
                     self.disk.RECOVERED
                 ):
                     self.disk.release_blocks([block_id])
+                    released_blocks.append(block_id)
 
         self.recovery_log.append({
             "transaction_id": transaction_id,
             "action": "UNDO CREATE",
-            "blocks_released": blocks
+            "blocks_released": released_blocks
         })
 
         print("Allocated blocks released.")
@@ -80,7 +87,7 @@ class RecoveryManager:
         recovered_blocks = []
 
         for block_id in blocks:
-            if block_id < self.disk.total_blocks:
+            if 0 <= block_id < self.disk.total_blocks:
                 block = self.disk.blocks[block_id]
 
                 if block["status"] == self.disk.CORRUPTED:
@@ -105,12 +112,17 @@ class RecoveryManager:
 
         print("Recovery action: REDO DELETE")
 
-        self.disk.release_blocks(blocks)
+        released_blocks = []
+
+        for block_id in blocks:
+            if 0 <= block_id < self.disk.total_blocks:
+                self.disk.release_blocks([block_id])
+                released_blocks.append(block_id)
 
         self.recovery_log.append({
             "transaction_id": transaction_id,
             "action": "REDO DELETE",
-            "blocks_released": blocks
+            "blocks_released": released_blocks
         })
 
         print("Blocks released for deleted file.")
@@ -118,6 +130,7 @@ class RecoveryManager:
     def _mark_recovered(self, transaction_id):
         transaction = self.journal._find_transaction(transaction_id)
 
+        transaction["recovery_required"] = True
         transaction["status"] = "RECOVERED"
 
         self.journal.save_journal()
@@ -157,7 +170,7 @@ def test_recovery_manager():
         "data/test_recovery_journal.log"
     )
 
-    # Allocate blocks for a file
+    # Allocate blocks for a file.
     blocks = disk.allocate_blocks(
         3,
         "report.txt"
@@ -165,7 +178,7 @@ def test_recovery_manager():
 
     print("Allocated blocks:", blocks)
 
-    # Create pending transaction
+    # Create pending transaction.
     transaction_id = journal.begin_transaction(
         operation="CREATE",
         file_name="report.txt",
@@ -179,7 +192,7 @@ def test_recovery_manager():
         f"Created transaction TX{transaction_id:03d}"
     )
 
-    # Simulate crash
+    # Simulate crash.
     simulator = CrashSimulator(
         disk,
         journal
@@ -196,7 +209,7 @@ def test_recovery_manager():
         disk.get_corrupted_blocks()
     )
 
-    # Start recovery
+    # Start recovery.
     recovery = RecoveryManager(
         disk,
         journal
@@ -204,7 +217,7 @@ def test_recovery_manager():
 
     recovery.recover()
 
-    # Display final state
+    # Display final state.
     recovery.display_recovery_log()
 
     print("\nFINAL DISK STATUS")

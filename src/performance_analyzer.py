@@ -17,7 +17,8 @@ class PerformanceAnalyzer:
 
     def calculate_disk_utilization(self, virtual_disk):
         used = sum(
-            1 for block in virtual_disk.blocks
+            1
+            for block in virtual_disk.blocks
             if block["status"] in (
                 virtual_disk.USED,
                 virtual_disk.RECOVERED
@@ -32,32 +33,46 @@ class PerformanceAnalyzer:
         return (used / total) * 100
 
     def count_corrupted_blocks(self, virtual_disk):
-        return len(virtual_disk.get_corrupted_blocks())
+        return len(
+            virtual_disk.get_corrupted_blocks()
+        )
 
     def count_recovered_blocks(self, virtual_disk):
         return sum(
-            1 for block in virtual_disk.blocks
+            1
+            for block in virtual_disk.blocks
             if block["status"] == virtual_disk.RECOVERED
         )
 
     def count_transactions(self, journal_manager):
-        return len(journal_manager.get_all_transactions())
+        return len(
+            journal_manager.get_all_transactions()
+        )
 
     def calculate_recovery_success_rate(self, journal_manager):
         transactions = journal_manager.get_all_transactions()
 
-        if not transactions:
-            return 0.0
+        recovery_required = [
+            transaction
+            for transaction in transactions
+            if transaction.get("recovery_required", False)
+        ]
 
-        recovered = sum(
-            1 for transaction in transactions
+        if not recovery_required:
+            return 100.0
+
+        successful = sum(
+            1
+            for transaction in recovery_required
             if transaction["status"] == "RECOVERED"
         )
 
-        return (recovered / len(transactions)) * 100
+        return (
+            successful / len(recovery_required)
+        ) * 100
 
     def generate_report(self, virtual_disk, journal_manager):
-        report = {
+        return {
             "operation_times": self.metrics.copy(),
             "disk_utilization": self.calculate_disk_utilization(
                 virtual_disk
@@ -71,12 +86,12 @@ class PerformanceAnalyzer:
             "transactions": self.count_transactions(
                 journal_manager
             ),
-            "recovery_success_rate": self.calculate_recovery_success_rate(
-                journal_manager
+            "recovery_success_rate": (
+                self.calculate_recovery_success_rate(
+                    journal_manager
+                )
             )
         }
-
-        return report
 
     def display_report(self, report):
         print("\nPERFORMANCE ANALYSIS")
@@ -150,7 +165,7 @@ def test_performance_analyzer():
 
     analyzer = PerformanceAnalyzer()
 
-    # Measure file-system block allocation
+    # Measure block allocation.
     start = analyzer.start_timer()
 
     blocks = disk.allocate_blocks(
@@ -165,7 +180,7 @@ def test_performance_analyzer():
         elapsed
     )
 
-    # Measure journal transaction creation
+    # Measure journal transaction creation.
     start = analyzer.start_timer()
 
     transaction_id = journal.begin_transaction(
@@ -184,12 +199,16 @@ def test_performance_analyzer():
         elapsed
     )
 
-    journal.commit_transaction(transaction_id)
+    journal.commit_transaction(
+        transaction_id
+    )
 
-    # Simulate corruption
-    disk.corrupt_block(blocks[2])
+    # Simulate corruption.
+    disk.corrupt_block(
+        blocks[2]
+    )
 
-    # Recover the block manually for measurement
+    # Measure block recovery.
     start = analyzer.start_timer()
 
     disk.recover_block(
@@ -209,9 +228,11 @@ def test_performance_analyzer():
         journal
     )
 
-    analyzer.display_report(report)
+    analyzer.display_report(
+        report
+    )
 
-    # Uncomment to display graph
+    # Uncomment to display the graph.
     # analyzer.plot_operation_times()
 
 
