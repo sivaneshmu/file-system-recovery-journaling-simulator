@@ -11,12 +11,12 @@
     >
 
     <title>
-        File System Recovery & Journaling Simulator
+        File System Recovery Simulator
     </title>
 
     <link
         rel="stylesheet"
-        href="{{ url_for('static', filename='style.css') }}"
+        href="{{ url_for('static', filename='style.css') }}?v=5"
     >
 
 </head>
@@ -24,826 +24,1018 @@
 
 <body>
 
+
+<!-- =====================================================
+     APPLICATION
+====================================================== -->
+
 <div class="app">
 
-    <!-- ============================================= -->
-    <!-- HEADER -->
-    <!-- ============================================= -->
 
-    <header class="topbar">
+    <!-- =================================================
+         SIDEBAR
+    ================================================== -->
 
-        <div>
+    <aside class="sidebar">
 
-            <div class="eyebrow">
-                OPERATING SYSTEMS PROJECT
+        <div class="brand">
+
+            <div class="brand-icon">
+                FS
             </div>
 
-            <h1>
-                File System Recovery &
-                Journaling Simulator
-            </h1>
+            <div>
 
-            <p>
-                Crash Simulation • Journaling •
-                Recovery • Consistency Analysis
-            </p>
+                <strong>
+                    File System
+                </strong>
+
+                <span>
+                    Recovery Simulator
+                </span>
+
+            </div>
 
         </div>
 
-        <div
-            id="systemStatus"
-            class="system-status normal"
-        >
 
-            <span class="status-dot"></span>
+        <nav class="navigation">
 
-            <span id="systemStatusText">
-                NORMAL
+            <button
+                class="nav-item active"
+                data-section="overview"
+                type="button"
+            >
+                <span>▦</span>
+                Overview
+            </button>
+
+
+            <button
+                class="nav-item"
+                data-section="files"
+                type="button"
+            >
+                <span>□</span>
+                File System
+            </button>
+
+
+            <button
+                class="nav-item"
+                data-section="journal"
+                type="button"
+            >
+                <span>≡</span>
+                Journal
+            </button>
+
+
+            <button
+                class="nav-item"
+                data-section="recovery"
+                type="button"
+            >
+                <span>↻</span>
+                Recovery
+            </button>
+
+
+            <button
+                class="nav-item"
+                data-section="performance"
+                type="button"
+            >
+                <span>◫</span>
+                Performance
+            </button>
+
+        </nav>
+
+
+        <div class="sidebar-footer">
+
+            <span class="connection-dot"></span>
+
+            <span>
+                Simulator connected
             </span>
 
         </div>
 
-    </header>
+    </aside>
 
 
-    <!-- ============================================= -->
-    <!-- METRICS -->
-    <!-- ============================================= -->
 
-    <section class="metrics">
+    <!-- =================================================
+         MAIN
+    ================================================== -->
 
-        <div class="metric-card">
+    <main class="main">
 
-            <div class="metric-title">
-                DISK UTILIZATION
-            </div>
 
-            <div
-                id="diskUtilization"
-                class="metric-value"
-            >
-                0%
-            </div>
+        <!-- =============================================
+             HEADER
+        ============================================== -->
 
-            <div
-                id="diskUsageText"
-                class="metric-sub"
-            >
-                0 / 0 blocks used
-            </div>
-
-        </div>
-
-
-        <div class="metric-card">
-
-            <div class="metric-title">
-                FILES
-            </div>
-
-            <div
-                id="fileCount"
-                class="metric-value"
-            >
-                0
-            </div>
-
-            <div class="metric-sub">
-                Active files
-            </div>
-
-        </div>
-
-
-        <div class="metric-card">
-
-            <div class="metric-title">
-                TRANSACTIONS
-            </div>
-
-            <div
-                id="transactionCount"
-                class="metric-value"
-            >
-                0
-            </div>
-
-            <div class="metric-sub">
-                Journal entries
-            </div>
-
-        </div>
-
-
-        <div class="metric-card">
-
-            <div class="metric-title">
-                CORRUPTED BLOCKS
-            </div>
-
-            <div
-                id="corruptedCount"
-                class="metric-value"
-            >
-                0
-            </div>
-
-            <div class="metric-sub">
-                Detected corruption
-            </div>
-
-        </div>
-
-
-        <div class="metric-card">
-
-            <div class="metric-title">
-                RECOVERY SUCCESS
-            </div>
-
-            <div
-                id="recoverySuccess"
-                class="metric-value"
-            >
-                100%
-            </div>
-
-            <div class="metric-sub">
-                Recovery rate
-            </div>
-
-        </div>
-
-    </section>
-
-
-    <!-- ============================================= -->
-    <!-- VIRTUAL DISK + FILE SYSTEM -->
-    <!-- ============================================= -->
-
-    <section class="main-grid">
-
-        <!-- VIRTUAL DISK -->
-
-        <div class="panel">
-
-            <div class="panel-header">
-
-                <div>
-
-                    <h2>
-                        Virtual Disk
-                    </h2>
-
-                    <p>
-                        Fixed-size block allocation map
-                    </p>
-
-                </div>
-
-                <span class="panel-badge">
-                    LIVE
-                </span>
-
-            </div>
-
-
-            <div
-                id="diskGrid"
-                class="disk-grid"
-            ></div>
-
-
-            <div class="legend">
-
-                <div>
-                    <span class="legend-box free"></span>
-                    Free
-                </div>
-
-                <div>
-                    <span class="legend-box used"></span>
-                    Used
-                </div>
-
-                <div>
-                    <span class="legend-box corrupted"></span>
-                    Corrupted
-                </div>
-
-                <div>
-                    <span class="legend-box recovered"></span>
-                    Recovered
-                </div>
-
-                <div>
-                    <span class="legend-box reserved"></span>
-                    Reserved
-                </div>
-
-            </div>
-
-        </div>
-
-
-        <!-- FILE SYSTEM -->
-
-        <div class="panel">
-
-            <div class="panel-header">
-
-                <div>
-
-                    <h2>
-                        File System
-                    </h2>
-
-                    <p>
-                        Directory structure
-                    </p>
-
-                </div>
-
-                <span class="panel-badge">
-                    TREE
-                </span>
-
-            </div>
-
-
-            <div
-                id="filesystemTree"
-                class="filesystem-tree"
-            ></div>
-
-        </div>
-
-    </section>
-
-
-    <!-- ============================================= -->
-    <!-- JOURNAL MONITOR -->
-    <!-- ============================================= -->
-
-    <section class="panel">
-
-        <div class="panel-header">
+        <header class="topbar">
 
             <div>
+
+                <h1 id="pageTitle">
+                    System Overview
+                </h1>
+
+                <p id="pageSubtitle">
+                    Monitor filesystem, journal and recovery state
+                </p>
+
+            </div>
+
+
+            <div
+                id="systemStatus"
+                class="system-status normal"
+            >
+
+                <span class="status-dot"></span>
+
+                <span id="systemStatusText">
+                    NORMAL
+                </span>
+
+            </div>
+
+        </header>
+
+
+
+        <!-- =============================================
+             OVERVIEW
+        ============================================== -->
+
+        <section
+            id="overview"
+            class="page-section active-section"
+        >
+
+
+            <!-- METRICS -->
+
+            <div class="metrics">
+
+                <div class="metric">
+
+                    <div class="metric-title">
+                        Disk Usage
+                    </div>
+
+                    <div
+                        id="diskUtilization"
+                        class="metric-value"
+                    >
+                        0%
+                    </div>
+
+                    <div id="diskUsageText">
+                        0 / 0 blocks
+                    </div>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <div class="metric-title">
+                        Files
+                    </div>
+
+                    <div
+                        id="fileCount"
+                        class="metric-value"
+                    >
+                        0
+                    </div>
+
+                    <div>
+                        Active files
+                    </div>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <div class="metric-title">
+                        Transactions
+                    </div>
+
+                    <div
+                        id="transactionCount"
+                        class="metric-value"
+                    >
+                        0
+                    </div>
+
+                    <div>
+                        Journal entries
+                    </div>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <div class="metric-title">
+                        Corrupted
+                    </div>
+
+                    <div
+                        id="corruptedCount"
+                        class="metric-value danger-value"
+                    >
+                        0
+                    </div>
+
+                    <div>
+                        Corrupted blocks
+                    </div>
+
+                </div>
+
+
+                <div class="metric">
+
+                    <div class="metric-title">
+                        Recovery
+                    </div>
+
+                    <div
+                        id="recoverySuccess"
+                        class="metric-value success-value"
+                    >
+                        0%
+                    </div>
+
+                    <div>
+                        Recovery success
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <!-- DISK + JOURNAL -->
+
+            <div class="dashboard-grid large-grid">
+
+
+                <article class="card disk-card">
+
+                    <div class="card-header">
+
+                        <div>
+
+                            <h2>
+                                Virtual Disk
+                            </h2>
+
+                            <span>
+                                Block allocation
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div
+                        id="diskGrid"
+                        class="disk-grid"
+                    ></div>
+
+
+                    <div class="legend">
+
+                        <span>
+                            <i class="free"></i>
+                            Free
+                        </span>
+
+                        <span>
+                            <i class="used"></i>
+                            Used
+                        </span>
+
+                        <span>
+                            <i class="reserved"></i>
+                            Reserved
+                        </span>
+
+                        <span>
+                            <i class="corrupted"></i>
+                            Corrupted
+                        </span>
+
+                        <span>
+                            <i class="recovered"></i>
+                            Recovered
+                        </span>
+
+                    </div>
+
+                </article>
+
+
+
+                <article class="card journal-card">
+
+                    <div class="card-header">
+
+                        <div>
+
+                            <h2>
+                                Journal Monitor
+                            </h2>
+
+                            <span>
+                                Transaction lifecycle
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="table-scroll">
+
+                        <table>
+
+                            <thead>
+
+                                <tr>
+
+                                    <th>
+                                        TX
+                                    </th>
+
+                                    <th>
+                                        Operation
+                                    </th>
+
+                                    <th>
+                                        File
+                                    </th>
+
+                                    <th>
+                                        Blocks
+                                    </th>
+
+                                    <th>
+                                        Status
+                                    </th>
+
+                                </tr>
+
+                            </thead>
+
+
+                            <tbody id="journalBody">
+
+                                <tr>
+
+                                    <td
+                                        colspan="5"
+                                        class="empty-table"
+                                    >
+                                        No transactions yet.
+                                    </td>
+
+                                </tr>
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                </article>
+
+            </div>
+
+
+
+            <!-- FILE SYSTEM + OPERATIONS -->
+
+            <div class="dashboard-grid">
+
+
+                <article class="card">
+
+                    <div class="card-header">
+
+                        <div>
+
+                            <h2>
+                                File System
+                            </h2>
+
+                            <span>
+                                Directory tree
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div
+                        id="filesystemTree"
+                        class="filesystem-tree"
+                    ></div>
+
+                </article>
+
+
+
+                <article class="card">
+
+                    <div class="card-header">
+
+                        <div>
+
+                            <h2>
+                                Quick Operations
+                            </h2>
+
+                            <span>
+                                Manage the virtual filesystem
+                            </span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="quick-forms">
+
+
+                        <div class="form-row">
+
+                            <input
+                                id="fileName"
+                                type="text"
+                                placeholder="File name"
+                            >
+
+                            <input
+                                id="fileSize"
+                                type="number"
+                                min="1"
+                                value="1"
+                                placeholder="Size"
+                            >
+
+                        </div>
+
+
+                        <input
+                            id="fileDirectory"
+                            type="text"
+                            value="/"
+                            placeholder="Directory"
+                        >
+
+
+                        <textarea
+                            id="fileContent"
+                            rows="3"
+                            placeholder="File content"
+                        ></textarea>
+
+
+                        <div class="action-row">
+
+                            <button
+                                id="createFileBtn"
+                                class="primary"
+                                type="button"
+                            >
+                                Create
+                            </button>
+
+                            <button
+                                id="modifyFileBtn"
+                                class="secondary"
+                                type="button"
+                            >
+                                Modify
+                            </button>
+
+                            <button
+                                id="deleteFileBtn"
+                                class="danger"
+                                type="button"
+                            >
+                                Delete
+                            </button>
+
+                        </div>
+
+
+                        <div class="separator"></div>
+
+
+                        <div class="form-row">
+
+                            <input
+                                id="directoryPath"
+                                type="text"
+                                placeholder="/documents"
+                            >
+
+                            <button
+                                id="createDirectoryBtn"
+                                class="secondary"
+                                type="button"
+                            >
+                                + Directory
+                            </button>
+
+                            <button
+                                id="deleteDirectoryBtn"
+                                class="danger"
+                                type="button"
+                            >
+                                Delete
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </article>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =============================================
+             FILE SYSTEM
+        ============================================== -->
+
+        <section
+            id="files"
+            class="page-section"
+        >
+
+            <div class="section-heading">
+
+                <h2>
+                    File System Management
+                </h2>
+
+                <p>
+                    Create, modify, delete and organize files and directories.
+                </p>
+
+            </div>
+
+
+            <div class="dashboard-grid">
+
+
+                <article class="card">
+
+                    <div class="card-header">
+
+                        <h2>
+                            Directory Tree
+                        </h2>
+
+                    </div>
+
+                    <div
+                        id="filesystemTreeFiles"
+                        class="filesystem-tree"
+                    ></div>
+
+                </article>
+
+
+                <article class="card">
+
+                    <div class="card-header">
+
+                        <h2>
+                            File Operations
+                        </h2>
+
+                    </div>
+
+                    <div class="quick-forms">
+
+                        <input
+                            id="fileNameFiles"
+                            type="text"
+                            placeholder="File name"
+                        >
+
+                        <input
+                            id="fileSizeFiles"
+                            type="number"
+                            min="1"
+                            value="1"
+                            placeholder="Size"
+                        >
+
+                        <input
+                            id="fileDirectoryFiles"
+                            type="text"
+                            value="/"
+                            placeholder="Directory"
+                        >
+
+                        <textarea
+                            id="fileContentFiles"
+                            rows="5"
+                            placeholder="Content"
+                        ></textarea>
+
+                    </div>
+
+                </article>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- =============================================
+             JOURNAL
+        ============================================== -->
+
+        <section
+            id="journal"
+            class="page-section"
+        >
+
+            <div class="section-heading">
 
                 <h2>
                     Journal Monitor
                 </h2>
 
                 <p>
-                    Write-ahead transaction log
+                    Track transaction state and crash consistency.
                 </p>
 
             </div>
 
-            <span class="panel-badge">
-                LIVE LOG
-            </span>
 
-        </div>
+            <article class="card journal-full">
 
+                <div class="table-scroll">
 
-        <div class="table-container">
+                    <table>
 
-            <table>
+                        <thead>
 
-                <thead>
+                            <tr>
 
-                    <tr>
+                                <th>
+                                    Transaction
+                                </th>
 
-                        <th>
-                            Transaction
-                        </th>
+                                <th>
+                                    Operation
+                                </th>
 
-                        <th>
-                            Operation
-                        </th>
+                                <th>
+                                    File
+                                </th>
 
-                        <th>
-                            File
-                        </th>
+                                <th>
+                                    Blocks
+                                </th>
 
-                        <th>
-                            Blocks
-                        </th>
+                                <th>
+                                    Status
+                                </th>
 
-                        <th>
-                            Status
-                        </th>
+                            </tr>
 
-                    </tr>
-
-                </thead>
-
-                <tbody id="journalBody">
-
-                </tbody>
-
-            </table>
-
-        </div>
-
-    </section>
+                        </thead>
 
 
-    <!-- ============================================= -->
-    <!-- FILE OPERATIONS -->
-    <!-- ============================================= -->
+                        <tbody id="journalBodyFull"></tbody>
 
-    <section class="operation-grid">
-
-
-        <div class="panel">
-
-            <div class="panel-header">
-
-                <div>
-
-                    <h2>
-                        File Operations
-                    </h2>
-
-                    <p>
-                        Create, modify and delete files
-                    </p>
+                    </table>
 
                 </div>
 
-            </div>
+            </article>
+
+        </section>
 
 
-            <div class="form-grid">
 
-                <div class="form-group">
+        <!-- =============================================
+             RECOVERY
+        ============================================== -->
 
-                    <label>
-                        File Name
-                    </label>
+        <section
+            id="recovery"
+            class="page-section"
+        >
 
-                    <input
-                        id="fileName"
-                        type="text"
-                        placeholder="report.txt"
-                    >
+            <div class="section-heading">
 
-                </div>
-
-
-                <div class="form-group">
-
-                    <label>
-                        File Size (bytes)
-                    </label>
-
-                    <input
-                        id="fileSize"
-                        type="number"
-                        min="1"
-                        placeholder="2500"
-                    >
-
-                </div>
-
-            </div>
-
-
-            <div class="form-group">
-
-                <label>
-                    Directory
-                </label>
-
-                <input
-                    id="fileDirectory"
-                    type="text"
-                    placeholder="/documents"
-                    value="/documents"
-                >
-
-            </div>
-
-
-            <div class="form-group">
-
-                <label>
-                    File Content
-                </label>
-
-                <textarea
-                    id="fileContent"
-                    placeholder="Enter file content..."
-                ></textarea>
-
-            </div>
-
-
-            <div class="button-row">
-
-                <button
-                    id="createFileBtn"
-                    class="btn primary"
-                >
-                    Create File
-                </button>
-
-                <button
-                    id="modifyFileBtn"
-                    class="btn secondary"
-                >
-                    Modify File
-                </button>
-
-                <button
-                    id="deleteFileBtn"
-                    class="btn danger"
-                >
-                    Delete File
-                </button>
-
-            </div>
-
-        </div>
-
-
-        <!-- DIRECTORY OPERATIONS -->
-
-        <div class="panel">
-
-            <div class="panel-header">
-
-                <div>
-
-                    <h2>
-                        Directory Operations
-                    </h2>
-
-                    <p>
-                        Manage virtual directories
-                    </p>
-
-                </div>
-
-            </div>
-
-
-            <div class="form-group">
-
-                <label>
-                    Directory Path
-                </label>
-
-                <input
-                    id="directoryPath"
-                    type="text"
-                    placeholder="/documents"
-                    value="/documents"
-                >
-
-            </div>
-
-
-            <div class="button-row">
-
-                <button
-                    id="createDirectoryBtn"
-                    class="btn primary"
-                >
-                    Create Directory
-                </button>
-
-                <button
-                    id="deleteDirectoryBtn"
-                    class="btn danger"
-                >
-                    Delete Directory
-                </button>
-
-            </div>
-
-
-            <div class="directory-info">
-
-                <div class="info-title">
-                    DIRECTORY MANAGEMENT
-                </div>
+                <h2>
+                    Crash & Recovery
+                </h2>
 
                 <p>
-                    Create a directory first, then use
-                    its path when creating files.
+                    Simulate filesystem failure and restore consistency.
                 </p>
 
             </div>
 
-        </div>
 
-    </section>
-
-
-    <!-- ============================================= -->
-    <!-- CRASH + CONSISTENCY -->
-    <!-- ============================================= -->
-
-    <section class="operation-grid">
+            <div class="dashboard-grid">
 
 
-        <!-- CRASH -->
+                <article class="card recovery-main">
 
-        <div class="panel">
+                    <div class="recovery-state">
 
-            <div class="panel-header">
+                        <div
+                            id="recoveryIcon"
+                            class="recovery-icon"
+                        >
+                            ✓
+                        </div>
 
-                <div>
+                        <div>
 
-                    <h2>
-                        Crash & Recovery
-                    </h2>
+                            <strong>
+                                System Recovery Control
+                            </strong>
 
-                    <p>
-                        Simulate an interrupted
-                        file-system operation
-                    </p>
+                            <span>
+                                Introduce a crash, inspect corruption,
+                                then recover.
+                            </span>
 
-                </div>
+                        </div>
 
-            </div>
-
-
-            <div class="crash-warning">
-
-                <div class="warning-symbol">
-                    ⚠
-                </div>
-
-                <div>
-
-                    <strong>
-                        Crash Simulation
-                    </strong>
-
-                    <p>
-                        The simulator creates an
-                        incomplete transaction and
-                        corrupted disk state.
-                    </p>
-
-                </div>
-
-            </div>
+                    </div>
 
 
-            <div
-                id="crashBlocks"
-                class="crash-blocks"
-            >
-                Waiting for crash simulation...
-            </div>
+                    <div class="action-row">
+
+                        <button
+                            id="crashBtn"
+                            class="danger"
+                            type="button"
+                        >
+                            Simulate Crash
+                        </button>
+
+                        <button
+                            id="recoverBtn"
+                            class="primary"
+                            type="button"
+                            disabled
+                        >
+                            Recover File System
+                        </button>
+
+                    </div>
 
 
-            <div class="button-row">
+                    <div
+                        id="crashBlocks"
+                        class="crash-info"
+                    >
+                        No corrupted blocks detected.
+                    </div>
 
-                <button
-                    id="crashBtn"
-                    class="btn danger big"
-                >
-                    💥 Simulate Crash
-                </button>
-
-                <button
-                    id="recoverBtn"
-                    class="btn primary big"
-                >
-                    ↻ Recover File System
-                </button>
-
-            </div>
-
-        </div>
+                </article>
 
 
-        <!-- CONSISTENCY -->
 
-        <div class="panel">
+                <article class="card">
 
-            <div class="panel-header">
+                    <div class="card-header">
 
-                <div>
+                        <div>
 
-                    <h2>
-                        Consistency Checker
-                    </h2>
+                            <h2>
+                                Consistency
+                            </h2>
 
-                    <p>
-                        Verify file-system integrity
-                    </p>
+                            <span>
+                                Filesystem integrity
+                            </span>
 
-                </div>
+                        </div>
 
-            </div>
+                    </div>
 
 
-            <div
-                id="consistencyStatus"
-                class="consistency-status healthy"
-            >
+                    <div
+                        id="consistencyStatus"
+                        class="consistency-status healthy"
+                    >
 
-                <div class="check-icon">
-                    ✓
-                </div>
+                        <div class="check-icon">
+                            ✓
+                        </div>
 
-                <div>
+                        <div>
 
-                    <strong>
-                        FILE SYSTEM HEALTHY
-                    </strong>
+                            <strong>
+                                FILE SYSTEM HEALTHY
+                            </strong>
 
-                    <p>
-                        Run a consistency check to
-                        verify the current state.
-                    </p>
+                            <span>
+                                No consistency problems detected.
+                            </span>
 
-                </div>
+                        </div>
+
+                    </div>
+
+
+                    <button
+                        id="consistencyBtn"
+                        class="secondary full-button"
+                        type="button"
+                    >
+                        Run Consistency Check
+                    </button>
+
+                </article>
 
             </div>
 
-
-            <button
-                id="consistencyBtn"
-                class="btn secondary full"
-            >
-                Run Consistency Check
-            </button>
-
-        </div>
-
-    </section>
+        </section>
 
 
-    <!-- ============================================= -->
-    <!-- PERFORMANCE -->
-    <!-- ============================================= -->
 
-    <section class="panel">
+        <!-- =============================================
+             PERFORMANCE
+        ============================================== -->
 
-        <div class="panel-header">
+        <section
+            id="performance"
+            class="page-section"
+        >
 
-            <div>
+            <div class="section-heading">
 
                 <h2>
                     Performance Analysis
                 </h2>
 
                 <p>
-                    Operation and recovery metrics
+                    Runtime measurements collected by the simulator.
                 </p>
 
             </div>
 
-            <span class="panel-badge">
-                ANALYTICS
-            </span>
 
-        </div>
+            <div class="performance-grid">
 
 
-        <div class="performance-grid">
+                <article class="performance-card">
 
-            <div class="performance-card">
+                    <span>
+                        Create File
+                    </span>
 
-                <span>
-                    CREATE FILE
-                </span>
+                    <strong id="createTime">
+                        -
+                    </strong>
 
-                <strong id="createTime">
-                    -
-                </strong>
+                </article>
+
+
+                <article class="performance-card">
+
+                    <span>
+                        Modify File
+                    </span>
+
+                    <strong id="modifyTime">
+                        -
+                    </strong>
+
+                </article>
+
+
+                <article class="performance-card">
+
+                    <span>
+                        Crash Simulation
+                    </span>
+
+                    <strong id="crashTime">
+                        -
+                    </strong>
+
+                </article>
+
+
+                <article class="performance-card">
+
+                    <span>
+                        Recovery
+                    </span>
+
+                    <strong id="recoveryTime">
+                        -
+                    </strong>
+
+                </article>
+
+            </div>
+
+
+            <article class="card performance-summary-card">
+
+                <div
+                    id="chartPlaceholder"
+                    class="performance-summary"
+                ></div>
+
+            </article>
+
+        </section>
+
+
+
+        <!-- =============================================
+             ACTIVITY
+        ============================================== -->
+
+        <section class="activity-panel card">
+
+            <div class="card-header">
+
+                <div>
+
+                    <h2>
+                        Activity Log
+                    </h2>
+
+                    <span>
+                        Persistent simulator events
+                    </span>
+
+                </div>
 
             </div>
 
 
-            <div class="performance-card">
+            <div
+                id="activityLog"
+                class="activity-log"
+            >
 
-                <span>
-                    MODIFY FILE
-                </span>
+                <div class="log-entry">
 
-                <strong id="modifyTime">
-                    -
-                </strong>
+                    <span class="log-time">
+                        --:--:--
+                    </span>
 
-            </div>
+                    <span>
+                        Loading activity history...
+                    </span>
 
-
-            <div class="performance-card">
-
-                <span>
-                    RECOVERY
-                </span>
-
-                <strong id="recoveryTime">
-                    -
-                </strong>
+                </div>
 
             </div>
 
-
-            <div class="performance-card">
-
-                <span>
-                    CRASH SIMULATION
-                </span>
-
-                <strong id="crashTime">
-                    -
-                </strong>
-
-            </div>
-
-        </div>
+        </section>
 
 
-        <div
-            id="chartPlaceholder"
-            class="chart-placeholder"
-        >
-            Performance measurements will appear
-            after operations are performed.
-        </div>
-
-    </section>
-
-
-    <!-- ============================================= -->
-    <!-- ACTIVITY LOG -->
-    <!-- ============================================= -->
-
-    <section class="panel">
-
-        <div class="panel-header">
-
-            <div>
-
-                <h2>
-                    Activity Log
-                </h2>
-
-                <p>
-                    Recent simulator events
-                </p>
-
-            </div>
-
-        </div>
-
-
-        <div
-            id="activityLog"
-            class="activity-log"
-        >
-
-            <div class="log-entry">
-
-                <span class="log-time">
-                    --
-                </span>
-
-                <span>
-                    System initialized
-                </span>
-
-            </div>
-
-        </div>
-
-    </section>
-
-
-    <!-- ============================================= -->
-    <!-- FOOTER -->
-    <!-- ============================================= -->
-
-    <footer>
-
-        File System Recovery &
-        Journaling Simulator
-
-        <span>•</span>
-
-        Operating Systems Project
-
-    </footer>
-
+    </main>
 
 </div>
 
 
 <script
-    src="{{ url_for('static', filename='script.js') }}"
+    src="{{ url_for('static', filename='script.js') }}?v=5"
+    defer
 ></script>
+
 
 </body>
 

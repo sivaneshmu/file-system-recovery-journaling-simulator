@@ -1,61 +1,14 @@
-let activityEntries = [];
+let refreshTimer = null;
+let refreshInProgress = false;
+let operationInProgress = false;
 
 
-function now() {
-
-    const date = new Date();
-
-    return date.toLocaleTimeString(
-        [],
-        {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit"
-        }
-    );
-}
-
-
-function addActivity(message) {
-
-    activityEntries.unshift({
-        time: now(),
-        message: message
-    });
-
-    activityEntries =
-        activityEntries.slice(0, 10);
-
-    const log =
-        document.getElementById("activityLog");
-
-    log.innerHTML = "";
-
-    activityEntries.forEach(entry => {
-
-        const row =
-            document.createElement("div");
-
-        row.className = "log-entry";
-
-        row.innerHTML = `
-            <span class="log-time">
-                ${entry.time}
-            </span>
-
-            <span>
-                ${escapeHtml(entry.message)}
-            </span>
-        `;
-
-        log.appendChild(row);
-    });
-}
-
+/* =========================================================
+   UTILITY
+========================================================= */
 
 function escapeHtml(value) {
-
-    return String(value)
+    return String(value ?? "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
@@ -66,38 +19,186 @@ function escapeHtml(value) {
 
 async function api(url, options = {}) {
 
-    const response = await fetch(
-        url,
-        {
-            headers: {
-                "Content-Type":
-                    "application/json"
-            },
-            ...options
-        }
-    );
+    const response = await fetch(url, {
+        headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        },
+        ...options
+    });
 
-    const data =
-        await response.json();
 
-    if (!response.ok ||
-        data.success === false) {
+    let data = {};
 
+    try {
+        data = await response.json();
+    }
+    catch {
+        throw new Error(
+            `Server returned HTTP ${response.status}.`
+        );
+    }
+
+
+    if (
+        !response.ok ||
+        data.success === false
+    ) {
         throw new Error(
             data.message ||
             "Operation failed."
         );
     }
 
+
     return data;
 }
 
 
 function showMessage(message) {
-
-    alert(message);
+    alert(String(message ?? ""));
 }
 
+
+/* =========================================================
+   SIDEBAR NAVIGATION
+========================================================= */
+
+function setupNavigation() {
+
+    const buttons =
+        document.querySelectorAll(
+            ".nav-item"
+        );
+
+
+    const titles = {
+
+        overview: {
+            title: "System Overview",
+            subtitle:
+                "Monitor filesystem, journal and recovery state"
+        },
+
+        files: {
+            title: "File System Management",
+            subtitle:
+                "Create, modify, delete and organize files"
+        },
+
+        journal: {
+            title: "Journal Monitor",
+            subtitle:
+                "Track transaction state and crash consistency"
+        },
+
+        recovery: {
+            title: "Crash & Recovery",
+            subtitle:
+                "Simulate filesystem failure and restore consistency"
+        },
+
+        performance: {
+            title: "Performance Analysis",
+            subtitle:
+                "Runtime measurements collected by the simulator"
+        }
+    };
+
+
+    buttons.forEach(button => {
+
+        button.addEventListener(
+            "click",
+            () => {
+
+                const sectionName =
+                    button.dataset.section;
+
+
+                buttons.forEach(item => {
+
+                    item.classList.remove(
+                        "active"
+                    );
+
+                });
+
+
+                button.classList.add(
+                    "active"
+                );
+
+
+                document
+                    .querySelectorAll(
+                        ".page-section"
+                    )
+                    .forEach(section => {
+
+                        section.classList.remove(
+                            "active-section"
+                        );
+
+                    });
+
+
+                const target =
+                    document.getElementById(
+                        sectionName
+                    );
+
+
+                if (target) {
+
+                    target.classList.add(
+                        "active-section"
+                    );
+
+                }
+
+
+                const info =
+                    titles[sectionName];
+
+
+                if (info) {
+
+                    const pageTitle =
+                        document.getElementById(
+                            "pageTitle"
+                        );
+
+                    const pageSubtitle =
+                        document.getElementById(
+                            "pageSubtitle"
+                        );
+
+
+                    if (pageTitle) {
+                        pageTitle.textContent =
+                            info.title;
+                    }
+
+
+                    if (pageSubtitle) {
+                        pageSubtitle.textContent =
+                            info.subtitle;
+                    }
+
+                }
+
+            }
+        );
+
+    });
+
+}
+
+
+/* =========================================================
+   SYSTEM STATUS
+========================================================= */
 
 function setSystemStatus(status) {
 
@@ -111,12 +212,24 @@ function setSystemStatus(status) {
             "systemStatusText"
         );
 
+
+    if (
+        !statusBox ||
+        !statusText
+    ) {
+        return;
+    }
+
+
     const normalized =
-        String(status || "NORMAL")
-            .toUpperCase();
+        String(
+            status || "NORMAL"
+        ).toUpperCase();
+
 
     statusText.textContent =
         normalized;
+
 
     statusBox.classList.remove(
         "normal",
@@ -124,64 +237,148 @@ function setSystemStatus(status) {
         "recovering"
     );
 
-    if (normalized.includes("CRASH")) {
+
+    if (
+        normalized.includes(
+            "CRASH"
+        )
+    ) {
 
         statusBox.classList.add(
             "crashed"
         );
 
-    } else if (
-        normalized.includes("RECOVER")
+    }
+    else if (
+        normalized.includes(
+            "RECOVER"
+        )
     ) {
 
         statusBox.classList.add(
             "recovering"
         );
 
-    } else {
+    }
+    else {
 
         statusBox.classList.add(
             "normal"
         );
+
     }
+
 }
 
+
+/* =========================================================
+   METRICS
+========================================================= */
 
 function updateMetrics(state) {
 
-    const disk = state.disk;
+    const disk =
+        state.disk || {};
 
-    document.getElementById(
-        "diskUtilization"
-    ).textContent =
-        `${disk.utilization}%`;
 
-    document.getElementById(
-        "diskUsageText"
-    ).textContent =
-        `${disk.used} / ${disk.total} blocks used`;
+    const diskUtilization =
+        document.getElementById(
+            "diskUtilization"
+        );
 
-    document.getElementById(
-        "fileCount"
-    ).textContent =
-        state.file_count;
+    const diskUsageText =
+        document.getElementById(
+            "diskUsageText"
+        );
 
-    document.getElementById(
-        "transactionCount"
-    ).textContent =
-        state.transaction_count;
+    const fileCount =
+        document.getElementById(
+            "fileCount"
+        );
 
-    document.getElementById(
-        "corruptedCount"
-    ).textContent =
-        disk.corrupted;
+    const transactionCount =
+        document.getElementById(
+            "transactionCount"
+        );
 
-    document.getElementById(
-        "recoverySuccess"
-    ).textContent =
-        `${state.recovery_success}%`;
+    const corruptedCount =
+        document.getElementById(
+            "corruptedCount"
+        );
+
+    const recoverySuccess =
+        document.getElementById(
+            "recoverySuccess"
+        );
+
+
+    if (diskUtilization) {
+
+        diskUtilization.textContent =
+            `${Number(
+                disk.utilization || 0
+            )}%`;
+
+    }
+
+
+    if (diskUsageText) {
+
+        diskUsageText.textContent =
+            `${Number(
+                disk.used || 0
+            )} / ${Number(
+                disk.total || 0
+            )} blocks used`;
+
+    }
+
+
+    if (fileCount) {
+
+        fileCount.textContent =
+            String(
+                state.file_count ?? 0
+            );
+
+    }
+
+
+    if (transactionCount) {
+
+        transactionCount.textContent =
+            String(
+                state.transaction_count ?? 0
+            );
+
+    }
+
+
+    if (corruptedCount) {
+
+        corruptedCount.textContent =
+            String(
+                disk.corrupted ?? 0
+            );
+
+    }
+
+
+    if (recoverySuccess) {
+
+        recoverySuccess.textContent =
+            `${Number(
+                state.recovery_success ?? 0
+            )}%`;
+
+    }
+
 }
 
+
+/* =========================================================
+   VIRTUAL DISK
+========================================================= */
 
 function updateDisk(state) {
 
@@ -190,82 +387,184 @@ function updateDisk(state) {
             "diskGrid"
         );
 
+
+    if (!grid) {
+        return;
+    }
+
+
     grid.innerHTML = "";
 
-    state.disk.blocks.forEach(
-        block => {
 
-            const element =
-                document.createElement(
-                    "div"
-                );
+    const blocks =
+        Array.isArray(
+            state?.disk?.blocks
+        )
+            ? state.disk.blocks
+            : [];
 
-            const status =
-                String(
-                    block.status || "FREE"
-                ).toLowerCase();
 
-            element.className =
-                `disk-block ${status}`;
+    if (blocks.length === 0) {
 
-            const blockFile =
-                block.file
-                    ? escapeHtml(block.file)
-                    : "—";
-
-            element.innerHTML = `
-                <strong>${block.id}</strong>
-                <span>${escapeHtml(block.status)}</span>
-                ${
-                    block.file
-                    ? `<small>${blockFile}</small>`
-                    : ""
-                }
+        grid.innerHTML =
+            `
+            <div class="empty-state">
+                No disk blocks available.
+            </div>
             `;
 
-            grid.appendChild(element);
-        }
-    );
+        return;
+    }
+
+
+    blocks.forEach(block => {
+
+        const element =
+            document.createElement(
+                "div"
+            );
+
+
+        const status =
+            String(
+                block.status ||
+                "FREE"
+            ).toLowerCase();
+
+
+        element.className =
+            `disk-block ${status}`;
+
+
+        element.title =
+            block.file
+                ? `Block ${block.id} • ${block.status} • ${block.file}`
+                : `Block ${block.id} • ${block.status}`;
+
+
+        element.innerHTML = `
+            <strong>
+                ${escapeHtml(block.id)}
+            </strong>
+
+            <span>
+                ${escapeHtml(block.status)}
+            </span>
+
+            ${
+                block.file
+                    ? `
+                        <small
+                            title="${escapeHtml(block.file)}"
+                        >
+                            ${escapeHtml(block.file)}
+                        </small>
+                      `
+                    : ""
+            }
+        `;
+
+
+        grid.appendChild(
+            element
+        );
+
+    });
+
 }
 
 
-function updateFileSystem(state) {
+/* =========================================================
+   FILE SYSTEM TREE
+========================================================= */
 
-    const tree =
-        document.getElementById(
-            "filesystemTree"
-        );
+function renderFileSystemTree(
+    tree,
+    state
+) {
+
+    if (!tree) {
+        return;
+    }
+
 
     tree.innerHTML = "";
 
 
-    // ROOT
     const root =
-        document.createElement("div");
+        document.createElement(
+            "div"
+        );
+
 
     root.className =
         "tree-item root";
+
 
     root.innerHTML = `
         <span>📁</span>
         <strong>/</strong>
     `;
 
-    tree.appendChild(root);
+
+    tree.appendChild(
+        root
+    );
 
 
     const directories =
-        state.directories || {};
+        state?.directories &&
+        typeof state.directories === "object"
+            ? state.directories
+            : {};
+
+
+    const files =
+        state?.files &&
+        typeof state.files === "object"
+            ? state.files
+            : {};
 
 
     const directoryNames =
-        Object.keys(directories)
-            .sort();
+        Object.keys(
+            directories
+        ).sort();
+
+
+    const knownFiles =
+        new Set();
+
+
+    directoryNames.forEach(path => {
+
+        const directory =
+            directories[path];
+
+
+        if (
+            directory &&
+            Array.isArray(
+                directory.files
+            )
+        ) {
+
+            directory.files.forEach(
+                file => {
+                    knownFiles.add(
+                        String(file)
+                    );
+                }
+            );
+
+        }
+
+    });
 
 
     if (
         directoryNames.length === 0 &&
-        state.file_count === 0
+        Object.keys(files).length === 0
     ) {
 
         const empty =
@@ -273,206 +572,320 @@ function updateFileSystem(state) {
                 "div"
             );
 
+
         empty.className =
             "tree-empty";
+
 
         empty.textContent =
             "No files or directories";
 
-        tree.appendChild(empty);
+
+        tree.appendChild(
+            empty
+        );
+
 
         return;
     }
 
 
-    directoryNames.forEach(
-        path => {
+    directoryNames.forEach(path => {
 
-            if (path === "/") {
-                return;
-            }
+        if (path === "/") {
+            return;
+        }
 
-            const directory =
-                directories[path];
+
+        const item =
+            document.createElement(
+                "div"
+            );
+
+
+        item.className =
+            "tree-item child";
+
+
+        item.innerHTML = `
+            <span>📁</span>
+            <span>
+                ${escapeHtml(path)}
+            </span>
+        `;
+
+
+        tree.appendChild(
+            item
+        );
+
+
+        const directory =
+            directories[path];
+
+
+        if (
+            directory &&
+            Array.isArray(
+                directory.files
+            )
+        ) {
+
+            directory.files.forEach(
+                fileName => {
+
+                    const file =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    file.className =
+                        "tree-item grandchild";
+
+
+                    file.innerHTML = `
+                        <span>📄</span>
+                        <span>
+                            ${escapeHtml(fileName)}
+                        </span>
+                    `;
+
+
+                    tree.appendChild(
+                        file
+                    );
+
+                }
+            );
+
+        }
+
+    });
+
+
+    Object.keys(files)
+        .filter(
+            fileName =>
+                !knownFiles.has(
+                    fileName
+                )
+        )
+        .sort()
+        .forEach(fileName => {
 
             const item =
                 document.createElement(
                     "div"
                 );
 
+
             item.className =
                 "tree-item child";
 
+
             item.innerHTML = `
-                <span>📁</span>
-                ${escapeHtml(path)}
+                <span>📄</span>
+                <span>
+                    ${escapeHtml(fileName)}
+                </span>
             `;
 
-            tree.appendChild(item);
 
+            tree.appendChild(
+                item
+            );
 
-            if (
-                directory &&
-                Array.isArray(
-                    directory.files
-                )
-            ) {
+        });
 
-                directory.files.forEach(
-                    fileName => {
-
-                        const file =
-                            document.createElement(
-                                "div"
-                            );
-
-                        file.className =
-                            "tree-item grandchild";
-
-                        file.innerHTML = `
-                            <span>📄</span>
-                            ${escapeHtml(fileName)}
-                        `;
-
-                        tree.appendChild(file);
-                    }
-                );
-            }
-        }
-    );
-
-
-    // Files not visible through directory
-    // structure are still shown.
-    const files =
-        state.files || {};
-
-    const knownFiles =
-        new Set();
-
-
-    directoryNames.forEach(
-        path => {
-
-            const directory =
-                directories[path];
-
-            if (
-                directory &&
-                Array.isArray(
-                    directory.files
-                )
-            ) {
-
-                directory.files.forEach(
-                    file => knownFiles.add(file)
-                );
-            }
-        }
-    );
-
-
-    Object.keys(files)
-        .filter(
-            file =>
-                !knownFiles.has(file)
-        )
-        .forEach(
-            fileName => {
-
-                const item =
-                    document.createElement(
-                        "div"
-                    );
-
-                item.className =
-                    "tree-item child";
-
-                item.innerHTML = `
-                    <span>📄</span>
-                    ${escapeHtml(fileName)}
-                `;
-
-                tree.appendChild(item);
-            }
-        );
 }
 
 
-function getTransactionId(transaction) {
+function updateFileSystem(state) {
 
-    const id =
-        transaction.id ??
-        transaction.transaction_id ??
+    const trees =
+        document.querySelectorAll(
+            ".filesystem-tree"
+        );
+
+
+    trees.forEach(
+        tree => {
+            renderFileSystemTree(
+                tree,
+                state
+            );
+        }
+    );
+
+}
+
+
+/* =========================================================
+   TRANSACTION HELPERS
+========================================================= */
+
+function getTransactionId(
+    transaction
+) {
+
+    const raw =
+        transaction?.id ??
+        transaction?.transaction_id ??
         "";
 
-    if (id === "") {
+
+    if (raw === "") {
         return "-";
     }
 
-    return `TX${String(id).padStart(3, "0")}`;
+
+    const text =
+        String(raw);
+
+
+    if (
+        text
+            .toUpperCase()
+            .startsWith("TX")
+    ) {
+        return text;
+    }
+
+
+    return (
+        `TX${text.padStart(
+            3,
+            "0"
+        )}`
+    );
+
 }
 
 
-function getBlocks(transaction) {
+function getBlocks(
+    transaction
+) {
 
     const blocks =
-        transaction.blocks || [];
+        transaction?.blocks;
 
-    if (!Array.isArray(blocks)) {
-        return "-";
+
+    if (
+        Array.isArray(
+            blocks
+        )
+    ) {
+
+        return blocks.length
+            ? blocks.join(", ")
+            : "-";
+
     }
 
-    return blocks.join(", ");
+
+    if (
+        blocks !== undefined &&
+        blocks !== null
+    ) {
+
+        return String(
+            blocks
+        );
+
+    }
+
+
+    return "-";
+
 }
 
 
-function statusClass(status) {
+function statusClass(
+    status
+) {
 
     const value =
-        String(status || "")
-            .toLowerCase();
+        String(
+            status || ""
+        ).toLowerCase();
 
-    if (value.includes("commit")) {
+
+    if (
+        value.includes(
+            "commit"
+        )
+    ) {
         return "committed";
     }
 
-    if (value.includes("recover")) {
+
+    if (
+        value.includes(
+            "recover"
+        )
+    ) {
         return "recovered";
     }
 
-    if (value.includes("incomplete")) {
+
+    if (
+        value.includes(
+            "incomplete"
+        ) ||
+        value.includes(
+            "pending"
+        )
+    ) {
         return "incomplete";
     }
 
-    if (value.includes("rollback")) {
+
+    if (
+        value.includes(
+            "rollback"
+        ) ||
+        value.includes(
+            "undo"
+        )
+    ) {
         return "rollback";
     }
 
+
     return "";
+
 }
 
 
-function updateJournal(state) {
+/* =========================================================
+   JOURNAL TABLE
+========================================================= */
 
-    const body =
-        document.getElementById(
-            "journalBody"
-        );
+function renderJournalTable(
+    body,
+    transactions
+) {
+
+    if (!body) {
+        return;
+    }
+
 
     body.innerHTML = "";
 
 
-    const transactions =
-        state.transactions || [];
-
-
-    if (transactions.length === 0) {
+    if (
+        !transactions ||
+        transactions.length === 0
+    ) {
 
         body.innerHTML = `
             <tr>
-                <td colspan="5"
-                    class="empty-table">
+                <td
+                    colspan="5"
+                    class="empty-table"
+                >
                     No journal transactions yet.
                 </td>
             </tr>
@@ -485,99 +898,186 @@ function updateJournal(state) {
     transactions
         .slice()
         .reverse()
-        .forEach(transaction => {
+        .forEach(
+            transaction => {
 
-            const row =
-                document.createElement(
-                    "tr"
+                const row =
+                    document.createElement(
+                        "tr"
+                    );
+
+
+                const status =
+                    String(
+                        transaction?.status ??
+                        "-"
+                    );
+
+
+                row.innerHTML = `
+
+                    <td>
+                        ${escapeHtml(
+                            getTransactionId(
+                                transaction
+                            )
+                        )}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            transaction?.operation ??
+                            "-"
+                        )}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            transaction?.file_name ??
+                            "-"
+                        )}
+                    </td>
+
+                    <td>
+                        ${escapeHtml(
+                            getBlocks(
+                                transaction
+                            )
+                        )}
+                    </td>
+
+                    <td>
+
+                        <span
+                            class="badge ${statusClass(status)}"
+                        >
+                            ${escapeHtml(
+                                status
+                            )}
+                        </span>
+
+                    </td>
+
+                `;
+
+
+                body.appendChild(
+                    row
                 );
 
-            const status =
-                transaction.status || "-";
+            }
+        );
 
-            row.innerHTML = `
-                <td>
-                    ${escapeHtml(
-                        getTransactionId(
-                            transaction
-                        )
-                    )}
-                </td>
-
-                <td>
-                    ${escapeHtml(
-                        transaction.operation ||
-                        "-"
-                    )}
-                </td>
-
-                <td>
-                    ${escapeHtml(
-                        transaction.file_name ||
-                        "-"
-                    )}
-                </td>
-
-                <td>
-                    ${escapeHtml(
-                        getBlocks(
-                            transaction
-                        )
-                    )}
-                </td>
-
-                <td>
-                    <span class="badge
-                        ${statusClass(status)}">
-                        ${escapeHtml(status)}
-                    </span>
-                </td>
-            `;
-
-            body.appendChild(row);
-        });
 }
 
 
-function updateCrashBlocks(state) {
+function updateJournal(state) {
+
+    const transactions =
+        Array.isArray(
+            state?.transactions
+        )
+            ? state.transactions
+            : [];
+
+
+    const body =
+        document.getElementById(
+            "journalBody"
+        );
+
+
+    const bodyFull =
+        document.getElementById(
+            "journalBodyFull"
+        );
+
+
+    renderJournalTable(
+        body,
+        transactions
+    );
+
+
+    renderJournalTable(
+        bodyFull,
+        transactions
+    );
+
+}
+
+
+/* =========================================================
+   CRASH INFORMATION
+========================================================= */
+
+function updateCrashBlocks(
+    state
+) {
 
     const target =
         document.getElementById(
             "crashBlocks"
         );
 
+
+    if (!target) {
+        return;
+    }
+
+
+    const blocks =
+        Array.isArray(
+            state?.disk?.blocks
+        )
+            ? state.disk.blocks
+            : [];
+
+
     const corrupted =
-        state.disk.corrupted;
+        blocks
+            .filter(
+                block =>
+                    String(
+                        block.status ||
+                        ""
+                    ).toUpperCase()
+                    ===
+                    "CORRUPTED"
+            )
+            .map(
+                block => block.id
+            );
 
-    if (corrupted > 0) {
 
-        const blocks =
-            state.disk.blocks
-                .filter(
-                    block =>
-                        block.status ===
-                        "CORRUPTED"
-                )
-                .map(
-                    block =>
-                        block.id
-                );
+    if (
+        corrupted.length > 0
+    ) {
 
         target.innerHTML = `
             <strong>
                 Corrupted blocks:
             </strong>
 
-            ${blocks.join(", ")}
+            ${escapeHtml(
+                corrupted.join(", ")
+            )}
         `;
 
-    } else {
+    }
+    else {
 
         target.textContent =
             "No corrupted blocks detected.";
+
     }
+
 }
 
+
+/* =========================================================
+   CONSISTENCY
+========================================================= */
 
 function setConsistencyHealthy() {
 
@@ -586,10 +1086,18 @@ function setConsistencyHealthy() {
             "consistencyStatus"
         );
 
+
+    if (!box) {
+        return;
+    }
+
+
     box.className =
         "consistency-status healthy";
 
+
     box.innerHTML = `
+
         <div class="check-icon">
             ✓
         </div>
@@ -600,26 +1108,38 @@ function setConsistencyHealthy() {
                 FILE SYSTEM HEALTHY
             </strong>
 
-            <p>
+            <span>
                 No consistency problems detected.
-            </p>
+            </span>
 
         </div>
+
     `;
+
 }
 
 
-function setConsistencyBad(message) {
+function setConsistencyBad(
+    message
+) {
 
     const box =
         document.getElementById(
             "consistencyStatus"
         );
 
+
+    if (!box) {
+        return;
+    }
+
+
     box.className =
         "consistency-status unhealthy";
 
+
     box.innerHTML = `
+
         <div class="check-icon bad">
             !
         </div>
@@ -630,485 +1150,235 @@ function setConsistencyBad(message) {
                 INCONSISTENT FILE SYSTEM
             </strong>
 
-            <p>
+            <span>
                 ${escapeHtml(message)}
-            </p>
+            </span>
 
         </div>
+
     `;
+
 }
 
 
-function consistencyIsHealthy(result) {
+function updateConsistency(
+    state
+) {
+
+    const result =
+        state?.consistency;
+
 
     if (!result) {
-        return false;
+        return;
     }
 
-    // The Python ConsistencyChecker directly
-    // returns healthy=True/False.
-    if (typeof result.healthy === "boolean") {
-        return result.healthy;
-    }
-
-    // Fallback for older result formats.
-    const status = String(
-        result.status ||
-        result.result ||
-        ""
-    ).toUpperCase();
 
     if (
-        status.includes("HEALTHY") ||
-        status === "CONSISTENT" ||
-        status === "OK"
+        result.healthy === true
     ) {
-        return true;
+
+        setConsistencyHealthy();
+
+        return;
     }
 
-    return false;
-}
 
-function updateState(state) {
+    const errors =
+        Array.isArray(
+            result.errors
+        )
+            ? result.errors
+            : [];
 
-    updateMetrics(state);
 
-    updateDisk(state);
+    const message =
+        errors.length > 0
+            ? errors.join(" • ")
+            : (
+                result.status ||
+                result.message ||
+                "Consistency problems detected."
+            );
 
-    updateFileSystem(state);
 
-    updateJournal(state);
-
-    updateCrashBlocks(state);
-
-    setSystemStatus(
-        state.crash_status
+    setConsistencyBad(
+        message
     );
+
 }
 
 
-async function refreshDashboard() {
+/* =========================================================
+   ACTIVITY LOG
+========================================================= */
 
-    try {
+function updateActivityLog(
+    state
+) {
 
-        const response =
-            await api(
-                "/api/state"
-            );
-
-        updateState(
-            response.state
-        );
-
-    } catch (error) {
-
-        console.error(
-            error
-        );
-    }
-}
-
-
-async function createFile() {
-
-    const fileName =
+    const log =
         document.getElementById(
-            "fileName"
-        ).value.trim();
-
-    const fileSize =
-        Number(
-            document.getElementById(
-                "fileSize"
-            ).value
+            "activityLog"
         );
 
-    const directory =
-        document.getElementById(
-            "fileDirectory"
-        ).value.trim();
 
-    const content =
-        document.getElementById(
-            "fileContent"
-        ).value;
-
-
-    try {
-
-        const response =
-            await api(
-                "/api/create-file",
-                {
-                    method: "POST",
-
-                    body: JSON.stringify({
-                        file_name: fileName,
-                        size: fileSize,
-                        content: content,
-                        directory:
-                            directory || "/"
-                    })
-                }
-            );
-
-
-        showMessage(
-            response.message
-        );
-
-        addActivity(
-            response.message
-        );
-
-        updateState(
-            response.state
-        );
-
-    } catch (error) {
-
-        showMessage(
-            error.message
-        );
+    if (!log) {
+        return;
     }
-}
 
 
-async function modifyFile() {
-
-    const fileName =
-        document.getElementById(
-            "fileName"
-        ).value.trim();
-
-    const content =
-        document.getElementById(
-            "fileContent"
-        ).value;
+    const entries =
+        Array.isArray(
+            state?.activity_log
+        )
+            ? state.activity_log
+            : [];
 
 
-    try {
-
-        const response =
-            await api(
-                "/api/modify-file",
-                {
-                    method: "POST",
-
-                    body: JSON.stringify({
-                        file_name: fileName,
-                        content: content
-                    })
-                }
-            );
+    log.innerHTML = "";
 
 
-        showMessage(
-            response.message
-        );
+    if (
+        entries.length === 0
+    ) {
 
-        addActivity(
-            response.message
-        );
+        log.innerHTML = `
 
-        updateState(
-            response.state
-        );
+            <div class="log-entry">
 
-    } catch (error) {
+                <span class="log-time">
+                    --:--:--
+                </span>
 
-        showMessage(
-            error.message
-        );
+                <span>
+                    No activity recorded yet.
+                </span>
+
+            </div>
+
+        `;
+
+        return;
     }
-}
 
 
-async function deleteFile() {
+    entries
+        .slice(
+            0,
+            20
+        )
+        .forEach(
+            entry => {
 
-    const fileName =
-        document.getElementById(
-            "fileName"
-        ).value.trim();
+                const row =
+                    document.createElement(
+                        "div"
+                    );
 
 
-    try {
+                row.className =
+                    "log-entry";
 
-        const response =
-            await api(
-                "/api/delete-file",
-                {
-                    method: "POST",
 
-                    body: JSON.stringify({
-                        file_name: fileName
-                    })
-                }
-            );
+                row.innerHTML = `
 
+                    <span class="log-time">
+                        ${escapeHtml(
+                            entry?.time ?? ""
+                        )}
+                    </span>
 
-        showMessage(
-            response.message
-        );
+                    <span>
+                        ${escapeHtml(
+                            entry?.message ?? ""
+                        )}
+                    </span>
 
-        addActivity(
-            response.message
-        );
+                `;
 
-        updateState(
-            response.state
-        );
 
-    } catch (error) {
-
-        showMessage(
-            error.message
-        );
-    }
-}
-
-
-async function createDirectory() {
-
-    const path =
-        document.getElementById(
-            "directoryPath"
-        ).value.trim();
-
-
-    try {
-
-        const response =
-            await api(
-                "/api/create-directory",
-                {
-                    method: "POST",
-
-                    body: JSON.stringify({
-                        path: path
-                    })
-                }
-            );
-
-
-        showMessage(
-            response.message
-        );
-
-        addActivity(
-            response.message
-        );
-
-        updateState(
-            response.state
-        );
-
-    } catch (error) {
-
-        showMessage(
-            error.message
-        );
-    }
-}
-
-
-async function deleteDirectory() {
-
-    const path =
-        document.getElementById(
-            "directoryPath"
-        ).value.trim();
-
-
-    try {
-
-        const response =
-            await api(
-                "/api/delete-directory",
-                {
-                    method: "POST",
-
-                    body: JSON.stringify({
-                        path: path
-                    })
-                }
-            );
-
-
-        showMessage(
-            response.message
-        );
-
-        addActivity(
-            response.message
-        );
-
-        updateState(
-            response.state
-        );
-
-    } catch (error) {
-
-        showMessage(
-            error.message
-        );
-    }
-}
-
-
-async function simulateCrash() {
-
-    try {
-
-        const response =
-            await api(
-                "/api/crash",
-                {
-                    method: "POST"
-                }
-            );
-
-
-        let message =
-            response.message;
-
-
-        if (
-            Array.isArray(
-                response.blocks
-            )
-        ) {
-
-            message +=
-                `\n\nCrash blocks: ${
-                    response.blocks.join(", ")
-                }`;
-        }
-
-
-        showMessage(
-            message
-        );
-
-        addActivity(
-            "Crash simulated. File system is now in a failed state."
-        );
-
-        updateState(
-            response.state
-        );
-
-    } catch (error) {
-
-        showMessage(
-            error.message
-        );
-    }
-}
-
-
-async function recoverFileSystem() {
-
-    try {
-
-        const response =
-            await api(
-                "/api/recover",
-                {
-                    method: "POST"
-                }
-            );
-
-
-        showMessage(
-            response.message
-        );
-
-        addActivity(
-            "File system recovery completed."
-        );
-
-        updateState(
-            response.state
-        );
-
-    } catch (error) {
-
-        showMessage(
-            error.message
-        );
-    }
-}
-
-
-async function runConsistencyCheck() {
-
-    try {
-
-        const response =
-            await api(
-                "/api/consistency",
-                {
-                    method: "POST"
-                }
-            );
-
-
-        if (
-            consistencyIsHealthy(
-                response.result
-            )
-        ) {
-
-            setConsistencyHealthy();
-
-            showMessage(
-                "FILE SYSTEM HEALTHY"
-            );
-
-            addActivity(
-                "Consistency check passed."
-            );
-
-        } else {
-
-            const text =
-                JSON.stringify(
-                    response.result
+                log.appendChild(
+                    row
                 );
 
-            setConsistencyBad(
-                text
-            );
-
-            showMessage(
-                "FILE SYSTEM IS INCONSISTENT"
-            );
-
-            addActivity(
-                "Consistency check detected problems."
-            );
-        }
-
-
-        updateState(
-            response.state
+            }
         );
 
-    } catch (error) {
-
-        showMessage(
-            error.message
-        );
-    }
 }
 
 
-function updatePerformance(report) {
+/* =========================================================
+   PERFORMANCE
+========================================================= */
 
-    if (!report ||
-        typeof report !== "object") {
+function formatTime(
+    value
+) {
 
+    if (
+        value === null ||
+        value === undefined ||
+        value === ""
+    ) {
+        return "-";
+    }
+
+
+    if (
+        typeof value === "number" &&
+        Number.isFinite(value)
+    ) {
+
+        return (
+            `${value.toFixed(6)} s`
+        );
+
+    }
+
+
+    return String(value);
+
+}
+
+
+function findOperationTime(
+    operationTimes,
+    names
+) {
+
+    for (
+        const name
+        of names
+    ) {
+
+        if (
+            Object.prototype.hasOwnProperty.call(
+                operationTimes,
+                name
+            )
+        ) {
+
+            return operationTimes[name];
+
+        }
+
+    }
+
+
+    return null;
+
+}
+
+
+function updatePerformance(
+    report
+) {
+
+    if (
+        !report ||
+        typeof report !== "object"
+    ) {
         return;
     }
 
@@ -1119,75 +1389,113 @@ function updatePerformance(report) {
         {};
 
 
-    function findTime(
-        possibleNames
-    ) {
+    const create =
+        findOperationTime(
+            operationTimes,
+            [
+                "Create File",
+                "create_file",
+                "CREATE"
+            ]
+        );
 
-        for (
-            const name
-            of possibleNames
-        ) {
 
-            if (
-                operationTimes[name]
-                !== undefined
-            ) {
+    const modify =
+        findOperationTime(
+            operationTimes,
+            [
+                "Modify File",
+                "modify_file",
+                "MODIFY"
+            ]
+        );
 
-                return operationTimes[name];
-            }
-        }
 
-        return null;
+    const recovery =
+        findOperationTime(
+            operationTimes,
+            [
+                "Recovery",
+                "recovery",
+                "RECOVER"
+            ]
+        );
+
+
+    const crash =
+        findOperationTime(
+            operationTimes,
+            [
+                "Crash Simulation",
+                "crash_simulation",
+                "Crash",
+                "CRASH"
+            ]
+        );
+
+
+    const createElement =
+        document.getElementById(
+            "createTime"
+        );
+
+
+    const modifyElement =
+        document.getElementById(
+            "modifyTime"
+        );
+
+
+    const recoveryElement =
+        document.getElementById(
+            "recoveryTime"
+        );
+
+
+    const crashElement =
+        document.getElementById(
+            "crashTime"
+        );
+
+
+    if (createElement) {
+
+        createElement.textContent =
+            formatTime(
+                create
+            );
+
     }
 
 
-    const create =
-        findTime([
-            "Create File",
-            "create_file"
-        ]);
+    if (modifyElement) {
 
-    const modify =
-        findTime([
-            "Modify File",
-            "modify_file"
-        ]);
+        modifyElement.textContent =
+            formatTime(
+                modify
+            );
 
-    const recovery =
-        findTime([
-            "Recovery",
-            "recovery"
-        ]);
-
-    const crash =
-        findTime([
-            "Crash Simulation",
-            "crash_simulation"
-        ]);
+    }
 
 
-    document.getElementById(
-        "createTime"
-    ).textContent =
-        formatTime(create);
+    if (recoveryElement) {
+
+        recoveryElement.textContent =
+            formatTime(
+                recovery
+            );
+
+    }
 
 
-    document.getElementById(
-        "modifyTime"
-    ).textContent =
-        formatTime(modify);
+    if (crashElement) {
 
+        crashElement.textContent =
+            formatTime(
+                crash
+            );
 
-    document.getElementById(
-        "recoveryTime"
-    ).textContent =
-        formatTime(recovery);
-
-
-    document.getElementById(
-        "crashTime"
-    ).textContent =
-        formatTime(crash);
+    }
 
 
     const placeholder =
@@ -1196,174 +1504,893 @@ function updatePerformance(report) {
         );
 
 
+    if (!placeholder) {
+        return;
+    }
+
+
+    const diskUtilization =
+        report.disk_utilization ??
+        report.disk?.utilization ??
+        "-";
+
+
+    const transactions =
+        report.transactions ??
+        report.transaction_count ??
+        "-";
+
+
+    const corruptedBlocks =
+        report.corrupted_blocks ??
+        report.corrupted ??
+        "-";
+
+
+    const recoveredBlocks =
+        report.recovered_blocks ??
+        report.recovered ??
+        "-";
+
+
+    const recoverySuccess =
+        report.recovery_success_rate ??
+        report.recovery_success ??
+        "-";
+
+
     placeholder.innerHTML = `
-        <div class="performance-summary">
 
-            <div>
-                <span>Disk Utilization</span>
-                <strong>
-                    ${
-                        report.disk_utilization ??
-                        "-"
-                    }%
-                </strong>
-            </div>
+        <div>
 
-            <div>
-                <span>Transactions</span>
-                <strong>
-                    ${
-                        report.transactions ??
-                        "-"
-                    }
-                </strong>
-            </div>
+            <span>
+                Disk Utilization
+            </span>
 
-            <div>
-                <span>Corrupted Blocks</span>
-                <strong>
-                    ${
-                        report.corrupted_blocks ??
-                        "-"
-                    }
-                </strong>
-            </div>
-
-            <div>
-                <span>Recovery Success</span>
-                <strong>
-                    ${
-                        report.recovery_success_rate ??
-                        "-"
-                    }%
-                </strong>
-            </div>
+            <strong>
+                ${escapeHtml(
+                    diskUtilization
+                )}%
+            </strong>
 
         </div>
+
+
+        <div>
+
+            <span>
+                Transactions
+            </span>
+
+            <strong>
+                ${escapeHtml(
+                    transactions
+                )}
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span>
+                Corrupted Blocks
+            </span>
+
+            <strong>
+                ${escapeHtml(
+                    corruptedBlocks
+                )}
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span>
+                Recovered Blocks
+            </span>
+
+            <strong>
+                ${escapeHtml(
+                    recoveredBlocks
+                )}
+            </strong>
+
+        </div>
+
+
+        <div>
+
+            <span>
+                Recovery Success
+            </span>
+
+            <strong>
+                ${escapeHtml(
+                    recoverySuccess
+                )}%
+            </strong>
+
+        </div>
+
     `;
+
 }
 
 
-function formatTime(value) {
+/* =========================================================
+   CRASH / RECOVERY BUTTON STATE
+========================================================= */
 
-    if (value === null ||
-        value === undefined) {
+function updateRecoveryControls(
+    state
+) {
 
-        return "-";
+    const crashed =
+        String(
+            state?.crash_status ||
+            ""
+        )
+            .toUpperCase()
+            .includes(
+                "CRASH"
+            );
+
+
+    const recoverButton =
+        document.getElementById(
+            "recoverBtn"
+        );
+
+
+    const crashButton =
+        document.getElementById(
+            "crashBtn"
+        );
+
+
+    if (recoverButton) {
+
+        recoverButton.disabled =
+            !crashed;
+
     }
 
+
+    if (crashButton) {
+
+        crashButton.disabled =
+            crashed;
+
+    }
+
+
+    const recoveryIcon =
+        document.getElementById(
+            "recoveryIcon"
+        );
+
+
+    if (recoveryIcon) {
+
+        if (crashed) {
+
+            recoveryIcon.textContent =
+                "!";
+
+            recoveryIcon.style.background =
+                "#2c1015";
+
+            recoveryIcon.style.color =
+                "#fca5a5";
+
+        }
+        else {
+
+            recoveryIcon.textContent =
+                "✓";
+
+            recoveryIcon.style.background =
+                "#0d241b";
+
+            recoveryIcon.style.color =
+                "#86efac";
+
+        }
+
+    }
+
+}
+
+
+/* =========================================================
+   MASTER STATE UPDATE
+========================================================= */
+
+function updateState(
+    state
+) {
 
     if (
-        typeof value === "number"
+        !state ||
+        typeof state !== "object"
     ) {
-
-        return `${value.toFixed(6)} s`;
+        return;
     }
 
 
-    return String(value);
+    updateMetrics(
+        state
+    );
+
+
+    updateDisk(
+        state
+    );
+
+
+    updateFileSystem(
+        state
+    );
+
+
+    updateJournal(
+        state
+    );
+
+
+    updateCrashBlocks(
+        state
+    );
+
+
+    updateConsistency(
+        state
+    );
+
+
+    updatePerformance(
+        state.performance
+    );
+
+
+    updateActivityLog(
+        state
+    );
+
+
+    setSystemStatus(
+        state.crash_status
+    );
+
+
+    updateRecoveryControls(
+        state
+    );
+
 }
 
 
-async function loadPerformance() {
+/* =========================================================
+   REFRESH
+========================================================= */
+
+async function refreshDashboard() {
+
+    if (
+        refreshInProgress
+    ) {
+        return;
+    }
+
+
+    refreshInProgress =
+        true;
+
 
     try {
 
         const response =
             await api(
-                "/api/performance"
+                "/api/state"
             );
 
-        updatePerformance(
-            response.report
+
+        updateState(
+            response.state
         );
 
-    } catch (error) {
+    }
+    catch (error) {
 
         console.error(
-            "Performance:",
+            "Dashboard refresh:",
             error
         );
+
     }
+    finally {
+
+        refreshInProgress =
+            false;
+
+    }
+
 }
 
 
+/* =========================================================
+   OPERATION CONTROL
+========================================================= */
+
+async function runOperation(
+    requestFactory,
+    busyButtonId
+) {
+
+    if (
+        operationInProgress
+    ) {
+        return;
+    }
+
+
+    operationInProgress =
+        true;
+
+
+    const button =
+        document.getElementById(
+            busyButtonId
+        );
+
+
+    let originalText =
+        "";
+
+
+    if (button) {
+
+        originalText =
+            button.textContent;
+
+
+        button.disabled =
+            true;
+
+
+        button.textContent =
+            "Working...";
+
+    }
+
+
+    try {
+
+        const response =
+            await requestFactory();
+
+
+        if (response.state) {
+
+            updateState(
+                response.state
+            );
+
+        }
+        else {
+
+            await refreshDashboard();
+
+        }
+
+
+        if (response.message) {
+
+            showMessage(
+                response.message
+            );
+
+        }
+
+    }
+    catch (error) {
+
+        showMessage(
+            error.message
+        );
+
+    }
+    finally {
+
+        operationInProgress =
+            false;
+
+
+        if (button) {
+
+            button.disabled =
+                false;
+
+            button.textContent =
+                originalText;
+
+        }
+
+
+        await refreshDashboard();
+
+    }
+
+}
+
+
+/* =========================================================
+   INPUT
+========================================================= */
+
+function inputValue(
+    id
+) {
+
+    const element =
+        document.getElementById(
+            id
+        );
+
+
+    return element
+        ? element.value
+        : "";
+
+}
+
+
+/* =========================================================
+   FILE OPERATIONS
+========================================================= */
+
+async function createFile() {
+
+    const fileName =
+        inputValue(
+            "fileName"
+        ).trim();
+
+
+    const size =
+        Number(
+            inputValue(
+                "fileSize"
+            )
+        );
+
+
+    const directory =
+        inputValue(
+            "fileDirectory"
+        ).trim() || "/";
+
+
+    const content =
+        inputValue(
+            "fileContent"
+        );
+
+
+    if (!fileName) {
+
+        showMessage(
+            "Enter a file name."
+        );
+
+        return;
+    }
+
+
+    if (
+        !Number.isFinite(
+            size
+        ) ||
+        size <= 0
+    ) {
+
+        showMessage(
+            "File size must be greater than 0."
+        );
+
+        return;
+    }
+
+
+    await runOperation(
+
+        () =>
+            api(
+                "/api/create-file",
+                {
+                    method: "POST",
+
+                    body:
+                        JSON.stringify(
+                            {
+                                file_name:
+                                    fileName,
+
+                                size:
+                                    size,
+
+                                content:
+                                    content,
+
+                                directory:
+                                    directory
+                            }
+                        )
+                }
+            ),
+
+        "createFileBtn"
+
+    );
+
+}
+
+
+async function modifyFile() {
+
+    const fileName =
+        inputValue(
+            "fileName"
+        ).trim();
+
+
+    const content =
+        inputValue(
+            "fileContent"
+        );
+
+
+    if (!fileName) {
+
+        showMessage(
+            "Enter a file name."
+        );
+
+        return;
+    }
+
+
+    await runOperation(
+
+        () =>
+            api(
+                "/api/modify-file",
+                {
+                    method: "POST",
+
+                    body:
+                        JSON.stringify(
+                            {
+                                file_name:
+                                    fileName,
+
+                                content:
+                                    content
+                            }
+                        )
+                }
+            ),
+
+        "modifyFileBtn"
+
+    );
+
+}
+
+
+async function deleteFile() {
+
+    const fileName =
+        inputValue(
+            "fileName"
+        ).trim();
+
+
+    if (!fileName) {
+
+        showMessage(
+            "Enter a file name."
+        );
+
+        return;
+    }
+
+
+    await runOperation(
+
+        () =>
+            api(
+                "/api/delete-file",
+                {
+                    method: "POST",
+
+                    body:
+                        JSON.stringify(
+                            {
+                                file_name:
+                                    fileName
+                            }
+                        )
+                }
+            ),
+
+        "deleteFileBtn"
+
+    );
+
+}
+
+
+/* =========================================================
+   DIRECTORY OPERATIONS
+========================================================= */
+
+async function createDirectory() {
+
+    const path =
+        inputValue(
+            "directoryPath"
+        ).trim();
+
+
+    if (!path) {
+
+        showMessage(
+            "Enter a directory path."
+        );
+
+        return;
+    }
+
+
+    await runOperation(
+
+        () =>
+            api(
+                "/api/create-directory",
+                {
+                    method: "POST",
+
+                    body:
+                        JSON.stringify(
+                            {
+                                path:
+                                    path
+                            }
+                        )
+                }
+            ),
+
+        "createDirectoryBtn"
+
+    );
+
+}
+
+
+async function deleteDirectory() {
+
+    const path =
+        inputValue(
+            "directoryPath"
+        ).trim();
+
+
+    if (!path) {
+
+        showMessage(
+            "Enter a directory path."
+        );
+
+        return;
+    }
+
+
+    await runOperation(
+
+        () =>
+            api(
+                "/api/delete-directory",
+                {
+                    method: "POST",
+
+                    body:
+                        JSON.stringify(
+                            {
+                                path:
+                                    path
+                            }
+                        )
+                }
+            ),
+
+        "deleteDirectoryBtn"
+
+    );
+
+}
+
+
+/* =========================================================
+   CRASH
+========================================================= */
+
+async function simulateCrash() {
+
+    await runOperation(
+
+        async () => {
+
+            const response =
+                await api(
+                    "/api/crash",
+                    {
+                        method:
+                            "POST"
+                    }
+                );
+
+
+            if (
+                Array.isArray(
+                    response.blocks
+                ) &&
+                response.blocks.length
+            ) {
+
+                showMessage(
+                    `${response.message}\n\n` +
+                    `Crash blocks: ` +
+                    `${response.blocks.join(", ")}`
+                );
+
+            }
+
+
+            return response;
+
+        },
+
+        "crashBtn"
+
+    );
+
+}
+
+
+/* =========================================================
+   RECOVERY
+========================================================= */
+
+async function recoverFileSystem() {
+
+    await runOperation(
+
+        () =>
+            api(
+                "/api/recover",
+                {
+                    method:
+                        "POST"
+                }
+            ),
+
+        "recoverBtn"
+
+    );
+
+}
+
+
+/* =========================================================
+   CONSISTENCY
+========================================================= */
+
+async function runConsistencyCheck() {
+
+    await runOperation(
+
+        () =>
+            api(
+                "/api/consistency",
+                {
+                    method:
+                        "POST"
+                }
+            ),
+
+        "consistencyBtn"
+
+    );
+
+}
+
+
+/* =========================================================
+   START
+========================================================= */
+
 document.addEventListener(
     "DOMContentLoaded",
-    () => {
+    async () => {
 
-        document.getElementById(
-            "createFileBtn"
-        ).addEventListener(
-            "click",
-            createFile
+        setupNavigation();
+
+
+        const handlers = {
+
+            createFileBtn:
+                createFile,
+
+            modifyFileBtn:
+                modifyFile,
+
+            deleteFileBtn:
+                deleteFile,
+
+            createDirectoryBtn:
+                createDirectory,
+
+            deleteDirectoryBtn:
+                deleteDirectory,
+
+            crashBtn:
+                simulateCrash,
+
+            recoverBtn:
+                recoverFileSystem,
+
+            consistencyBtn:
+                runConsistencyCheck
+
+        };
+
+
+        Object.entries(
+            handlers
+        ).forEach(
+            ([id, handler]) => {
+
+                const button =
+                    document.getElementById(
+                        id
+                    );
+
+
+                if (button) {
+
+                    button.addEventListener(
+                        "click",
+                        handler
+                    );
+
+                }
+
+            }
         );
 
 
-        document.getElementById(
-            "modifyFileBtn"
-        ).addEventListener(
-            "click",
-            modifyFile
-        );
+        await refreshDashboard();
 
 
-        document.getElementById(
-            "deleteFileBtn"
-        ).addEventListener(
-            "click",
-            deleteFile
-        );
-
-
-        document.getElementById(
-            "createDirectoryBtn"
-        ).addEventListener(
-            "click",
-            createDirectory
-        );
-
-
-        document.getElementById(
-            "deleteDirectoryBtn"
-        ).addEventListener(
-            "click",
-            deleteDirectory
-        );
-
-
-        document.getElementById(
-            "crashBtn"
-        ).addEventListener(
-            "click",
-            simulateCrash
-        );
-
-
-        document.getElementById(
-            "recoverBtn"
-        ).addEventListener(
-            "click",
-            recoverFileSystem
-        );
-
-
-        document.getElementById(
-            "consistencyBtn"
-        ).addEventListener(
-            "click",
-            runConsistencyCheck
-        );
-
-
-        addActivity(
-            "Web dashboard connected to simulator."
-        );
-
-
-        refreshDashboard();
-
-        loadPerformance();
+        refreshTimer =
+            setInterval(
+                refreshDashboard,
+                2000
+            );
 
     }
 );
