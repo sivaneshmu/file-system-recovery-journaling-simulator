@@ -1,4 +1,5 @@
 import os
+import math
 import time
 
 from virtual_disk import VirtualDisk
@@ -12,7 +13,9 @@ from performance_analyzer import PerformanceAnalyzer
 
 
 class FileSystemSystem:
+
     def __init__(self):
+
         self.disk = VirtualDisk(
             total_blocks=32,
             block_size=1024
@@ -55,17 +58,33 @@ class FileSystemSystem:
 
         self.performance_analyzer = PerformanceAnalyzer()
 
+
+    # =====================================================
+    # CREATE DIRECTORY
+    # =====================================================
+
     def create_directory(self, path):
+
         start = time.perf_counter()
 
-        self.directory_manager.create_directory(path)
+        self.directory_manager.create_directory(
+            path
+        )
 
-        elapsed = time.perf_counter() - start
+        elapsed = (
+            time.perf_counter() - start
+        )
 
         self.performance_analyzer.record_operation_time(
             "Create Directory",
             elapsed
         )
+
+
+    # =====================================================
+    # CREATE FILE
+    # WRITE-AHEAD LOGGING
+    # =====================================================
 
     def create_file(
         self,
@@ -74,171 +93,489 @@ class FileSystemSystem:
         content,
         directory="/"
     ):
+
         start = time.perf_counter()
 
-        blocks = self.file_manager.create_file(
-            file_name,
-            size,
-            content
+        if size <= 0:
+            raise ValueError(
+                "File size must be greater than 0."
+            )
+
+        # -------------------------------------------------
+        # Determine the number of blocks required.
+        # -------------------------------------------------
+
+        required_blocks = math.ceil(
+            size / self.disk.block_size
         )
 
-        self.directory_manager.add_file(
-            directory,
-            file_name
+        free_blocks = (
+            self.disk.get_free_blocks()
         )
 
-        elapsed = time.perf_counter() - start
+        if len(free_blocks) < required_blocks:
+            raise RuntimeError(
+                "Not enough free blocks to create the file."
+            )
 
-        self.performance_analyzer.record_operation_time(
-            "Create File",
-            elapsed
-        )
+        planned_blocks = free_blocks[
+            :required_blocks
+        ]
 
-        # Record the transaction.
+        # -------------------------------------------------
+        # WRITE-AHEAD LOG
+        # Journal BEFORE modifying the filesystem.
+        # -------------------------------------------------
+
         journal_start = time.perf_counter()
 
-        transaction_id = self.journal_manager.begin_transaction(
-            operation="CREATE",
-            file_name=file_name,
-            blocks=blocks,
-            details={
-                "size": size,
-                "directory": directory
-            }
+        transaction_id = (
+            self.journal_manager.begin_transaction(
+                operation="CREATE",
+                file_name=file_name,
+                blocks=planned_blocks,
+                details={
+                    "size": size,
+                    "directory": directory,
+                    "content": content,
+                    "wal": True
+                }
+            )
         )
 
-        self.journal_manager.commit_transaction(
-            transaction_id
-        )
-
-        journal_elapsed = (
+        journal_begin_elapsed = (
             time.perf_counter() - journal_start
         )
 
-        self.performance_analyzer.record_operation_time(
-            "Journal Transaction",
-            journal_elapsed
-        )
+        try:
 
-        return transaction_id
+            # -------------------------------------------------
+            # Apply filesystem operation.
+            # -------------------------------------------------
 
-    def modify_file(self, file_name, content):
-        start = time.perf_counter()
+            blocks = self.file_manager.create_file(
+                file_name,
+                size,
+                content
+            )
 
-        metadata = self.file_manager.get_metadata(
-            file_name
-        )
+            self.directory_manager.add_file(
+                directory,
+                file_name
+            )
 
-        transaction_id = self.journal_manager.begin_transaction(
-            operation="MODIFY",
-            file_name=file_name,
-            blocks=metadata["blocks"],
-            details={
-                "old_size": metadata["size"],
-                "new_size": len(content)
-            }
-        )
+            # -------------------------------------------------
+            # Store the actual allocated blocks in the
+            # transaction, when the journal structure allows it.
+            # -------------------------------------------------
 
-        self.file_manager.modify_file(
-            file_name,
-            content
-        )
+            try:
 
-        self.journal_manager.commit_transaction(
-            transaction_id
-        )
-
-        elapsed = time.perf_counter() - start
-
-        self.performance_analyzer.record_operation_time(
-            "Modify File",
-            elapsed
-        )
-
-        return transaction_id
-
-    def delete_file(self, file_name):
-        start = time.perf_counter()
-
-        metadata = self.file_manager.get_metadata(
-            file_name
-        )
-
-        transaction_id = self.journal_manager.begin_transaction(
-            operation="DELETE",
-            file_name=file_name,
-            blocks=metadata["blocks"]
-        )
-
-        # Remove the file from its directory.
-        for path, directory in self.directory_manager.directories.items():
-            if file_name in directory["files"]:
-                self.directory_manager.remove_file(
-                    path,
-                    file_name
+                transaction = (
+                    self.journal_manager._find_transaction(
+                        transaction_id
+                    )
                 )
-                break
 
-        self.file_manager.delete_file(
-            file_name
-        )
+                if (
+                    transaction is not None
+                    and isinstance(blocks, list)
+                ):
+                    transaction["blocks"] = blocks
 
-        self.journal_manager.commit_transaction(
-            transaction_id
-        )
+            except Exception:
+                pass
 
-        elapsed = time.perf_counter() - start
+            # -------------------------------------------------
+            # COMMIT
+            # -------------------------------------------------
 
-        self.performance_analyzer.record_operation_time(
-            "Delete File",
-            elapsed
-        )
+            commit_start = time.perf_counter()
 
-        return transaction_id
+            self.journal_manager.commit_transaction(
+                transaction_id
+            )
 
-    def simulate_crash(self, file_name, blocks):
+            journal_commit_elapsed = (
+                time.perf_counter() - commit_start
+            )
+
+            elapsed = (
+                time.perf_counter() - start
+            )
+
+            journal_elapsed = (
+                journal_begin_elapsed +
+                journal_commit_elapsed
+            )
+
+            self.performance_analyzer.record_operation_time(
+                "Create File",
+                elapsed
+            )
+
+            self.performance_analyzer.record_operation_time(
+                "Journal Transaction",
+                journal_elapsed
+            )
+
+            return transaction_id
+
+        except Exception:
+
+            # Failed transaction remains recoverable.
+            try:
+
+                self.journal_manager.mark_incomplete(
+                    transaction_id
+                )
+
+            except Exception:
+                pass
+
+            raise
+
+
+    # =====================================================
+    # MODIFY FILE
+    # WRITE-AHEAD LOGGING
+    # =====================================================
+
+    def modify_file(
+        self,
+        file_name,
+        content
+    ):
+
         start = time.perf_counter()
 
-        transaction_id = self.journal_manager.begin_transaction(
-            operation="CREATE",
-            file_name=file_name,
-            blocks=blocks,
-            details={
-                "crash_test": True
-            }
+        # -------------------------------------------------
+        # Get metadata before modification.
+        # -------------------------------------------------
+
+        metadata = (
+            self.file_manager.get_metadata(
+                file_name
+            )
         )
 
-        # Partially apply the simulated operation.
-        for block_id in blocks:
-            if 0 <= block_id < self.disk.total_blocks:
-                block = self.disk.blocks[block_id]
-
-                if block["status"] == self.disk.FREE:
-                    block["status"] = self.disk.USED
-                    block["file"] = file_name
-
-        result = self.crash_simulator.simulate_crash(
-            transaction_id
+        old_blocks = list(
+            metadata["blocks"]
         )
 
-        elapsed = time.perf_counter() - start
+        old_size = metadata["size"]
 
-        self.performance_analyzer.record_operation_time(
-            "Crash Simulation",
-            elapsed
+        # -------------------------------------------------
+        # WRITE-AHEAD LOG
+        # -------------------------------------------------
+
+        journal_start = time.perf_counter()
+
+        transaction_id = (
+            self.journal_manager.begin_transaction(
+                operation="MODIFY",
+                file_name=file_name,
+                blocks=old_blocks,
+                details={
+                    "old_size": old_size,
+                    "new_size": len(content),
+                    "old_blocks": old_blocks,
+                    "wal": True
+                }
+            )
         )
 
-        return result
+        journal_begin_elapsed = (
+            time.perf_counter() - journal_start
+        )
+
+        try:
+
+            # -------------------------------------------------
+            # Apply modification.
+            # -------------------------------------------------
+
+            self.file_manager.modify_file(
+                file_name,
+                content
+            )
+
+            # -------------------------------------------------
+            # COMMIT
+            # -------------------------------------------------
+
+            commit_start = time.perf_counter()
+
+            self.journal_manager.commit_transaction(
+                transaction_id
+            )
+
+            journal_commit_elapsed = (
+                time.perf_counter() - commit_start
+            )
+
+            elapsed = (
+                time.perf_counter() - start
+            )
+
+            journal_elapsed = (
+                journal_begin_elapsed +
+                journal_commit_elapsed
+            )
+
+            self.performance_analyzer.record_operation_time(
+                "Modify File",
+                elapsed
+            )
+
+            self.performance_analyzer.record_operation_time(
+                "Journal Transaction",
+                journal_elapsed
+            )
+
+            return transaction_id
+
+        except Exception:
+
+            try:
+
+                self.journal_manager.mark_incomplete(
+                    transaction_id
+                )
+
+            except Exception:
+                pass
+
+            raise
+
+
+    # =====================================================
+    # DELETE FILE
+    # WRITE-AHEAD LOGGING
+    # =====================================================
+
+    def delete_file(
+        self,
+        file_name
+    ):
+
+        start = time.perf_counter()
+
+        # -------------------------------------------------
+        # Get metadata before deleting.
+        # -------------------------------------------------
+
+        metadata = (
+            self.file_manager.get_metadata(
+                file_name
+            )
+        )
+
+        old_blocks = list(
+            metadata["blocks"]
+        )
+
+        # -------------------------------------------------
+        # WRITE-AHEAD LOG
+        # -------------------------------------------------
+
+        journal_start = time.perf_counter()
+
+        transaction_id = (
+            self.journal_manager.begin_transaction(
+                operation="DELETE",
+                file_name=file_name,
+                blocks=old_blocks,
+                details={
+                    "old_size": metadata["size"],
+                    "old_blocks": old_blocks,
+                    "wal": True
+                }
+            )
+        )
+
+        journal_begin_elapsed = (
+            time.perf_counter() - journal_start
+        )
+
+        try:
+
+            # -------------------------------------------------
+            # Remove file from directory.
+            # -------------------------------------------------
+
+            for (
+                path,
+                directory
+            ) in self.directory_manager.directories.items():
+
+                if file_name in directory["files"]:
+
+                    self.directory_manager.remove_file(
+                        path,
+                        file_name
+                    )
+
+                    break
+
+            # -------------------------------------------------
+            # Delete from file system.
+            # -------------------------------------------------
+
+            self.file_manager.delete_file(
+                file_name
+            )
+
+            # -------------------------------------------------
+            # COMMIT
+            # -------------------------------------------------
+
+            commit_start = time.perf_counter()
+
+            self.journal_manager.commit_transaction(
+                transaction_id
+            )
+
+            journal_commit_elapsed = (
+                time.perf_counter() - commit_start
+            )
+
+            elapsed = (
+                time.perf_counter() - start
+            )
+
+            journal_elapsed = (
+                journal_begin_elapsed +
+                journal_commit_elapsed
+            )
+
+            self.performance_analyzer.record_operation_time(
+                "Delete File",
+                elapsed
+            )
+
+            self.performance_analyzer.record_operation_time(
+                "Journal Transaction",
+                journal_elapsed
+            )
+
+            return transaction_id
+
+        except Exception:
+
+            try:
+
+                self.journal_manager.mark_incomplete(
+                    transaction_id
+                )
+
+            except Exception:
+                pass
+
+            raise
+
+
+    # =====================================================
+    # CRASH SIMULATION
+    # =====================================================
+
+    def simulate_crash(
+        self,
+        file_name,
+        blocks
+    ):
+
+        start = time.perf_counter()
+
+        # -------------------------------------------------
+        # Write transaction to journal FIRST.
+        # -------------------------------------------------
+
+        transaction_id = (
+            self.journal_manager.begin_transaction(
+                operation="CREATE",
+                file_name=file_name,
+                blocks=blocks,
+                details={
+                    "crash_test": True,
+                    "wal": True
+                }
+            )
+        )
+
+        try:
+
+            # -------------------------------------------------
+            # Partially apply the simulated filesystem update.
+            # -------------------------------------------------
+
+            for block_id in blocks:
+
+                if (
+                    0 <= block_id
+                    < self.disk.total_blocks
+                ):
+
+                    block = self.disk.blocks[block_id]
+
+                    if block["status"] == self.disk.FREE:
+
+                        block["status"] = self.disk.USED
+                        block["file"] = file_name
+
+            # -------------------------------------------------
+            # Deliberately simulate crash.
+            # -------------------------------------------------
+
+            result = (
+                self.crash_simulator.simulate_crash(
+                    transaction_id
+                )
+            )
+
+            elapsed = (
+                time.perf_counter() - start
+            )
+
+            self.performance_analyzer.record_operation_time(
+                "Crash Simulation",
+                elapsed
+            )
+
+            return result
+
+        except Exception:
+
+            try:
+
+                self.journal_manager.mark_incomplete(
+                    transaction_id
+                )
+
+            except Exception:
+                pass
+
+            raise
+
+
+    # =====================================================
+    # RECOVERY
+    # =====================================================
 
     def recover(self):
+
         start = time.perf_counter()
 
-        result = self.recovery_manager.recover()
+        result = (
+            self.recovery_manager.recover()
+        )
 
-        # Recovery is complete, so restore normal system state.
+        # Recovery completed.
         self.crash_simulator.reset()
 
-        elapsed = time.perf_counter() - start
+        elapsed = (
+            time.perf_counter() - start
+        )
 
         self.performance_analyzer.record_operation_time(
             "Recovery",
@@ -247,13 +584,29 @@ class FileSystemSystem:
 
         return result
 
+
+    # =====================================================
+    # CONSISTENCY CHECK
+    # =====================================================
+
     def check_consistency(self):
-        return self.consistency_checker.check()
+
+        return (
+            self.consistency_checker.check()
+        )
+
+
+    # =====================================================
+    # PERFORMANCE REPORT
+    # =====================================================
 
     def performance_report(self):
-        report = self.performance_analyzer.generate_report(
-            self.disk,
-            self.journal_manager
+
+        report = (
+            self.performance_analyzer.generate_report(
+                self.disk,
+                self.journal_manager
+            )
         )
 
         self.performance_analyzer.display_report(
@@ -262,17 +615,33 @@ class FileSystemSystem:
 
         return report
 
+
+    # =====================================================
+    # DISPLAY SYSTEM STATE
+    # =====================================================
+
     def display_system_state(self):
-        print("\n" + "=" * 70)
-        print("CURRENT FILE SYSTEM STATE")
-        print("=" * 70)
+
+        print(
+            "\n" + "=" * 70
+        )
+
+        print(
+            "CURRENT FILE SYSTEM STATE"
+        )
+
+        print(
+            "=" * 70
+        )
 
         print("\nFiles:")
+
         print(
             self.file_manager.list_files()
         )
 
         print("\nDirectories:")
+
         print(
             list(
                 self.directory_manager.directories.keys()
@@ -280,43 +649,73 @@ class FileSystemSystem:
         )
 
         print("\nJournal:")
+
         self.journal_manager.display_journal()
 
         print("\nDisk:")
+
         self.disk.display_disk()
 
 
+# =========================================================
+# INTEGRATION DEMONSTRATION
+# =========================================================
+
 def run_integration_demo():
+
     system = FileSystemSystem()
 
-    print("=" * 70)
-    print("FILE SYSTEM RECOVERY AND JOURNALING SIMULATOR")
-    print("INTEGRATED SYSTEM DEMONSTRATION")
-    print("=" * 70)
+    print(
+        "=" * 70
+    )
 
-    # ---------------------------------------------------------
-    # Step 1: Directory creation
-    # ---------------------------------------------------------
+    print(
+        "FILE SYSTEM RECOVERY AND JOURNALING SIMULATOR"
+    )
 
-    print("\n[1] Creating directory...")
+    print(
+        "INTEGRATED SYSTEM DEMONSTRATION"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+    # -----------------------------------------------------
+    # STEP 1
+    # Directory creation
+    # -----------------------------------------------------
+
+    print(
+        "\n[1] Creating directory..."
+    )
 
     system.create_directory(
         "/documents"
     )
 
-    print("Directory '/documents' created.")
+    print(
+        "Directory '/documents' created."
+    )
 
-    # ---------------------------------------------------------
-    # Step 2: File creation
-    # ---------------------------------------------------------
 
-    print("\n[2] Creating file...")
+    # -----------------------------------------------------
+    # STEP 2
+    # File creation
+    # -----------------------------------------------------
 
-    transaction_id = system.create_file(
-        file_name="report.txt",
-        size=2500,
-        content="Operating Systems Lab Project",
-        directory="/documents"
+    print(
+        "\n[2] Creating file..."
+    )
+
+    transaction_id = (
+        system.create_file(
+            file_name="report.txt",
+            size=2500,
+            content="Operating Systems Lab Project",
+            directory="/documents"
+        )
     )
 
     print(
@@ -324,15 +723,21 @@ def run_integration_demo():
         f"(TX{transaction_id:03d})."
     )
 
-    # ---------------------------------------------------------
-    # Step 3: File modification
-    # ---------------------------------------------------------
 
-    print("\n[3] Modifying file...")
+    # -----------------------------------------------------
+    # STEP 3
+    # File modification
+    # -----------------------------------------------------
 
-    transaction_id = system.modify_file(
-        "report.txt",
-        "File System Recovery and Journaling Simulator"
+    print(
+        "\n[3] Modifying file..."
+    )
+
+    transaction_id = (
+        system.modify_file(
+            "report.txt",
+            "File System Recovery and Journaling Simulator"
+        )
     )
 
     print(
@@ -340,19 +745,27 @@ def run_integration_demo():
         f"(TX{transaction_id:03d})."
     )
 
-    # ---------------------------------------------------------
-    # Step 4: Consistency before crash
-    # ---------------------------------------------------------
 
-    print("\n[4] Checking consistency...")
+    # -----------------------------------------------------
+    # STEP 4
+    # Consistency before crash
+    # -----------------------------------------------------
+
+    print(
+        "\n[4] Checking consistency..."
+    )
 
     system.check_consistency()
 
-    # ---------------------------------------------------------
-    # Step 5: Crash simulation
-    # ---------------------------------------------------------
 
-    print("\n[5] Creating crash scenario...")
+    # -----------------------------------------------------
+    # STEP 5
+    # Crash simulation
+    # -----------------------------------------------------
+
+    print(
+        "\n[5] Creating crash scenario..."
+    )
 
     crash_blocks = (
         system.disk.get_free_blocks()[:3]
@@ -363,9 +776,11 @@ def run_integration_demo():
         crash_blocks
     )
 
-    crash_result = system.simulate_crash(
-        "crash_demo.txt",
-        crash_blocks
+    crash_result = (
+        system.simulate_crash(
+            "crash_demo.txt",
+            crash_blocks
+        )
     )
 
     print(
@@ -375,54 +790,89 @@ def run_integration_demo():
 
     system.crash_simulator.display_crash_status()
 
-    # ---------------------------------------------------------
-    # Step 6: Consistency after crash
-    # ---------------------------------------------------------
 
-    print("\n[6] Checking consistency after crash...")
+    # -----------------------------------------------------
+    # STEP 6
+    # Consistency after crash
+    # -----------------------------------------------------
+
+    print(
+        "\n[6] Checking consistency after crash..."
+    )
 
     system.check_consistency()
 
-    # ---------------------------------------------------------
-    # Step 7: Recovery
-    # ---------------------------------------------------------
 
-    print("\n[7] Recovering file system...")
+    # -----------------------------------------------------
+    # STEP 7
+    # Recovery
+    # -----------------------------------------------------
+
+    print(
+        "\n[7] Recovering file system..."
+    )
 
     system.recover()
 
-    print("\nSystem status after recovery:")
+    print(
+        "\nSystem status after recovery:"
+    )
 
     system.crash_simulator.display_crash_status()
 
-    # ---------------------------------------------------------
-    # Step 8: Consistency after recovery
-    # ---------------------------------------------------------
 
-    print("\n[8] Checking consistency after recovery...")
+    # -----------------------------------------------------
+    # STEP 8
+    # Consistency after recovery
+    # -----------------------------------------------------
+
+    print(
+        "\n[8] Checking consistency after recovery..."
+    )
 
     system.check_consistency()
 
-    # ---------------------------------------------------------
-    # Step 9: Performance
-    # ---------------------------------------------------------
 
-    print("\n[9] Performance analysis...")
+    # -----------------------------------------------------
+    # STEP 9
+    # Performance analysis
+    # -----------------------------------------------------
+
+    print(
+        "\n[9] Performance analysis..."
+    )
 
     system.performance_report()
 
-    # ---------------------------------------------------------
-    # Step 10: Final state
-    # ---------------------------------------------------------
 
-    print("\n[10] Final system state...")
+    # -----------------------------------------------------
+    # STEP 10
+    # Final system state
+    # -----------------------------------------------------
+
+    print(
+        "\n[10] Final system state..."
+    )
 
     system.display_system_state()
 
-    print("\n" + "=" * 70)
-    print("INTEGRATION DEMONSTRATION COMPLETED")
-    print("=" * 70)
+    print(
+        "\n" + "=" * 70
+    )
 
+    print(
+        "INTEGRATION DEMONSTRATION COMPLETED"
+    )
+
+    print(
+        "=" * 70
+    )
+
+
+# =========================================================
+# PROGRAM ENTRY POINT
+# =========================================================
 
 if __name__ == "__main__":
+
     run_integration_demo()
